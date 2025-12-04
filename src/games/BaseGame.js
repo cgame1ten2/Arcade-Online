@@ -1,3 +1,5 @@
+/* src/games/BaseGame.js */
+
 export default class BaseGame {
     constructor(context, rules = {}) {
         this.p = context.p5;
@@ -9,13 +11,9 @@ export default class BaseGame {
         
         this.mode = rules.mode || 'active';
         this.config = {
-            // WIN CONDITIONS: 'SCORE', 'ROUNDS', 'SURVIVAL', 'TIME'
             winCondition: 'SCORE', 
             winValue: rules.winValue || 5,
-            
-            // For 'TIME' mode: Duration per round in ms
             roundDuration: 60000, 
-            
             roundEndCriteria: 'NONE', 
             scoreSorting: 'DESC', 
             roundResetType: 'RESET_ALL', 
@@ -45,7 +43,7 @@ export default class BaseGame {
             activePlayerIndex: 0,
             winner: null,
             isRoundActive: false,
-            timer: 0 // Milliseconds remaining
+            timer: 0 
         };
 
         this.V_WIDTH = 1920;
@@ -83,18 +81,21 @@ export default class BaseGame {
         this.onSetup(); 
         this.updateUI(); 
         this.startNewRound();
+        
+        // --- FIX: TELL NETWORK GAME STARTED ---
+        if (this.mode !== 'demo') {
+            window.dispatchEvent(new CustomEvent('game-state-change', { detail: 'PLAYING' }));
+        }
     }
 
     draw() {
         if (this.isDestroyed) return;
         const p = this.p;
         
-        // --- TIMER LOGIC ---
         if (this.state.phase === 'PLAYING' && this.config.winCondition === 'TIME') {
             const now = p.millis();
             const delta = now - this.timerLastTick;
             this.timerLastTick = now;
-            
             this.state.timer -= delta;
             if (this.state.timer <= 0) {
                 this.state.timer = 0;
@@ -114,7 +115,6 @@ export default class BaseGame {
         }
 
         p.push();
-        
         let sx = 0, sy = 0;
         if (this.shakeTimer > 0) {
             this.shakeTimer--;
@@ -122,7 +122,6 @@ export default class BaseGame {
             sx = p.random(-1, 1) * 20 * damp;
             sy = p.random(-1, 1) * 20 * damp;
         }
-
         p.translate(this.transX + sx, this.transY + sy);
         p.scale(this.scaleFactor);
 
@@ -140,7 +139,7 @@ export default class BaseGame {
         }
     }
 
-    handleInput(playerId, type) {
+    handleInput(playerId, type, payload) {
         if (this.isDestroyed || this.state.phase !== 'PLAYING') return;
 
         const p = this.players.find(pl => pl.id === playerId);
@@ -151,7 +150,8 @@ export default class BaseGame {
             if (activeP.id !== playerId) return;
         }
 
-        this.onPlayerInput(p, type); 
+        // Pass payload (for joystick vectors)
+        this.onPlayerInput(p, type, payload); 
     }
 
     simulateInput(playerIndex, action) {
@@ -167,7 +167,7 @@ export default class BaseGame {
         this.state.phase = 'INTRO';
         this.state.round++;
         this.state.isRoundActive = true;
-        this.state.timer = this.config.roundDuration; // Reset Timer
+        this.state.timer = this.config.roundDuration; 
         
         this.players.forEach(p => {
             if (this.config.roundResetType === 'ELIMINATION' && p.isPermEliminated) {
@@ -195,6 +195,11 @@ export default class BaseGame {
         this.updateUI();
         this.onRoundStart();
 
+        // --- FIX: TELL NETWORK PLAYING ---
+        if (this.mode !== 'demo') {
+            window.dispatchEvent(new CustomEvent('game-state-change', { detail: 'PLAYING' }));
+        }
+
         const delay = this.mode === 'demo' ? 100 : 800;
         setTimeout(() => {
             if (!this.isDestroyed) {
@@ -206,10 +211,8 @@ export default class BaseGame {
 
     nextTurn() {
         if (!this.config.turnBased || this.isDestroyed) return;
-
         let attempts = 0;
         const total = this.players.length;
-        
         do {
             this.state.activePlayerIndex = (this.state.activePlayerIndex + 1) % total;
             attempts++;
@@ -218,16 +221,13 @@ export default class BaseGame {
              this.players[this.state.activePlayerIndex].isPermEliminated) && 
             attempts < total
         );
-
         this.updateTurnVisuals();
     }
 
     validateTurn(randomize = false) {
         const activePlayers = this.players.filter(p => !p.isEliminated && !p.isPermEliminated);
         if (activePlayers.length === 0) return;
-
         const current = this.players[this.state.activePlayerIndex];
-        
         if (randomize || current.isEliminated || current.isPermEliminated) {
             const nextP = activePlayers[Math.floor(Math.random() * activePlayers.length)];
             this.state.activePlayerIndex = this.players.indexOf(nextP);
@@ -239,28 +239,19 @@ export default class BaseGame {
         if (this.isDestroyed) return;
         const current = this.players[this.state.activePlayerIndex];
         if (!current) return;
-
-        if (this.mode !== 'demo') {
-            this.ui.showTurnMessage(`${current.name}'s Turn!`, current.color);
-        }
-
-        if (this.config.turnBasedBackgroundColor) {
-            this.targetBgColor = this.hexToRgb(current.color);
-        }
+        if (this.mode !== 'demo') this.ui.showTurnMessage(`${current.name}'s Turn!`, current.color);
+        if (this.config.turnBasedBackgroundColor) this.targetBgColor = this.hexToRgb(current.color);
     }
 
     eliminatePlayer(playerIdx) {
         if (!this.state.isRoundActive || this.state.phase !== 'PLAYING' || this.isDestroyed) return;
-
         const p = this.players[playerIdx];
         if (!p || p.isEliminated) return;
-
         p.lives--;
         if (this.config.livesPerRound > 1) {
             p.customStatus = p.lives; 
             this.updateUI();
         }
-
         if (p.lives <= 0) {
             if (this.config.eliminateOnDeath) {
                 p.isEliminated = true;
@@ -278,9 +269,7 @@ export default class BaseGame {
     }
 
     handleTimeUp() {
-        // Sort by Score (Desc)
         const sorted = [...this.players].sort((a, b) => b.score - a.score);
-        // Handle Draw? For now, top score wins.
         this.endRound(sorted[0]);
     }
 
@@ -301,6 +290,11 @@ export default class BaseGame {
         this.state.isRoundActive = false;
         this.state.phase = 'ROUND_OVER';
         
+        // --- FIX: TELL NETWORK ROUND OVER ---
+        if (this.mode !== 'demo') {
+            window.dispatchEvent(new CustomEvent('game-state-change', { detail: 'ROUND_OVER' }));
+        }
+        
         if (roundWinner && this.mode !== 'demo') {
             if (this.config.roundEndCriteria === 'SURVIVAL') {
                 roundWinner.score++;
@@ -313,13 +307,6 @@ export default class BaseGame {
 
         setTimeout(() => {
             if (this.isDestroyed) return;
-            
-            // Check Game Win Condition
-            // For 'TIME' games, we assume they play 'winValue' number of rounds (e.g. Best of 3)
-            // But we actually store "Rounds Won" in a separate place?
-            // BaseGame structure usually assumes 'score' is rounds won.
-            // If the game uses 'score' for points (like PaintParty), we need to handle that in the Game file manually
-            // or trust checkWinCondition overrides.
             
             if (this.checkWinCondition()) {
                 this.finishGame();
@@ -336,12 +323,10 @@ export default class BaseGame {
 
     checkWinCondition() {
         if (this.mode === 'demo') return false; 
-
         const sorted = [...this.players].sort((a, b) => {
             return this.config.scoreSorting === 'ASC' ? a.score - b.score : b.score - a.score;
         });
         const leader = sorted[0];
-
         if (this.config.winCondition === 'SCORE' && leader.score >= this.config.winValue) {
             this.state.winner = leader;
             return true;
@@ -357,20 +342,19 @@ export default class BaseGame {
                 return true;
             }
         }
-        
-        // For TIME, we usually treat it like ROUNDS (Play X rounds then stop)
-        // Or if it's 1 long round, the timer ending calls finishGame manually.
-        if (this.config.winCondition === 'TIME') {
-             // Handled by handleTimeUp logic mostly
-             return false; 
-        }
-
+        if (this.config.winCondition === 'TIME') return false; 
         return false;
     }
 
     finishGame() {
         if (this.isDestroyed) return;
         this.state.phase = 'GAME_OVER';
+        
+        // --- FIX: TELL NETWORK GAME OVER ---
+        if (this.mode !== 'demo') {
+            window.dispatchEvent(new CustomEvent('game-state-change', { detail: 'GAME_OVER' }));
+        }
+
         if (this.audio && this.mode !== 'demo') this.audio.setTrack('victory');
         
         if (this.mode === 'tournament' && this.onGameComplete) {
@@ -406,7 +390,7 @@ export default class BaseGame {
     onRoundStart() {}
     onRoundEnd() {}
     onPlayerEliminated(player) {}
-    onPlayerInput(player, type) {} 
+    onPlayerInput(player, type, payload) {} 
     onDraw() {}
     getBgColor() { return '#F0EAD6'; }
 }
