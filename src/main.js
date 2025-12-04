@@ -16,7 +16,10 @@ const inputs = new InputManager(players);
 const ui = new UIManager();
 const audio = new AudioManager();
 const runner = new GameRunner(players, inputs, ui, audio);
-const tournament = new TournamentManager(runner, ui, players);
+
+// Pass returnToHub as a callback so Tournament can exit without reloading
+const tournament = new TournamentManager(runner, ui, players, () => returnToHub());
+
 const network = new NetworkManager(players, inputs);
 
 // Link Inputs to Network Lag System
@@ -86,8 +89,6 @@ function init() {
         if (!setupOverlay.classList.contains('hidden')) {
             renderVisualLobby();
         }
-        // If on Hub, we might want to refresh demos eventually, 
-        // but for now we leave them to avoid flicker.
     });
 
     setupListeners();
@@ -98,7 +99,6 @@ function init() {
 /**
  * REBUILDS THE MAIN MENU
  * Destroys old demos, clears the grid, and regenerates cards.
- * This ensures avatars update if colors changed.
  */
 function renderHub() {
     // 1. Clean up existing demos to prevent memory leaks
@@ -218,7 +218,7 @@ function resumeDemos() { demoInstances.forEach(p5inst => p5inst.loop()); }
 
 function showTournamentSetup() {
     audio.play('click');
-    network.broadcastState('LOBBY'); // Ensure phones are ready
+    network.broadcastState('LOBBY'); 
 
     ui.centerMessage.innerHTML = `
         <div class="message-card">
@@ -248,7 +248,6 @@ function showTournamentSetup() {
 }
 
 function setupLobby() {
-    // OPEN SETTINGS
     setupBtn.addEventListener('click', () => {
         audio.play('click');
         audio.setTrack('config'); 
@@ -259,14 +258,13 @@ function setupLobby() {
         pauseDemos();
     });
 
-    // CLOSE SETTINGS (SAVE & EXIT)
     savePlayersBtn.addEventListener('click', () => {
         audio.play('click');
         audio.setTrack('lobby');
         setupOverlay.classList.add('hidden');
         
         cleanupLobby(); // Clean up P5 instances in the settings menu
-        renderHub();    // Rebuild main menu to show new player colors
+        renderHub();    // Rebuild menu (NO RELOAD)
     });
 
     addPlayerBtn.addEventListener('click', () => {
@@ -288,7 +286,6 @@ function renderVisualLobby() {
     const existingSettings = document.querySelector('.lobby-settings');
     if (existingSettings) existingSettings.remove();
 
-    // Add Audio Toggles
     const settingsDiv = document.createElement('div');
     settingsDiv.className = 'lobby-settings';
     settingsDiv.innerHTML = `
@@ -314,7 +311,6 @@ function renderVisualLobby() {
         audio.play('click');
     };
 
-    // Render Cards
     playerConfigGrid.innerHTML = '';
     const activePlayers = players.getActivePlayers();
 
@@ -366,7 +362,6 @@ function renderVisualLobby() {
                     setTimeout(() => expression = 'idle', 1000);
                 }
 
-                // IMPORTANT: Fetch latest data to support Mobile updates
                 const currP = players.getPlayer(index);
                 if (currP) {
                     avatars.draw({
