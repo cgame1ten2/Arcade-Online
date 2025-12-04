@@ -1,5 +1,3 @@
-/* src/core/BaseGame.js */
-
 export default class BaseGame {
     constructor(context, rules = {}) {
         this.p = context.p5;
@@ -11,9 +9,13 @@ export default class BaseGame {
         
         this.mode = rules.mode || 'active';
         this.config = {
+            // WIN CONDITIONS: 'SCORE', 'ROUNDS', 'SURVIVAL', 'TIME'
             winCondition: 'SCORE', 
             winValue: rules.winValue || 5,
+            
+            // For 'TIME' mode: Duration per round in ms
             roundDuration: 60000, 
+            
             roundEndCriteria: 'NONE', 
             scoreSorting: 'DESC', 
             roundResetType: 'RESET_ALL', 
@@ -31,7 +33,10 @@ export default class BaseGame {
             score: 0, 
             lives: this.config.livesPerRound,
             isEliminated: false,
-            isPermEliminated: false
+            isPermEliminated: false,
+            wasPressed: false,
+            aiNextActionTime: 0,
+            aiState: 'IDLE'
         }));
 
         this.state = {
@@ -40,11 +45,8 @@ export default class BaseGame {
             activePlayerIndex: 0,
             winner: null,
             isRoundActive: false,
-            timer: 0 
+            timer: 0 // Milliseconds remaining
         };
-
-        // Virtual Cursors for Mobile
-        this.cursors = new Map(); // Map<playerId, {x, y, isDown, color}>
 
         this.V_WIDTH = 1920;
         this.V_HEIGHT = 1200;
@@ -54,62 +56,92 @@ export default class BaseGame {
         this.transX = 0;
         this.transY = 0;
         this.shakeTimer = 0;
+        
         this.bgColor = [240, 234, 214];
+        this.targetBgColor = [240, 234, 214];
+
         this.isDestroyed = false;
+        this.timerLastTick = 0;
     }
 
     setup() {
         if (this.isDestroyed) return;
+
         const parent = this.p.canvas.parentElement;
         this.p.createCanvas(parent.clientWidth, parent.clientHeight);
         this.calculateLayout();
 
         this.state.round = 0;
         this.state.winner = null;
-        this.players.forEach(p => { p.score = 0; p.isPermEliminated = false; });
+        this.players.forEach(p => {
+            p.score = 0;
+            p.isPermEliminated = false;
+        });
 
         if (this.audio && this.mode !== 'demo') this.audio.setTrack('game');
-
-        // Init Cursors at center
-        this.players.forEach(p => {
-            this.cursors.set(p.id, { x: this.CX, y: this.CY, isDown: false, color: p.color });
-        });
 
         this.onSetup(); 
         this.updateUI(); 
         this.startNewRound();
     }
 
-    // --- INPUT HANDLING ---
-    handleInput(playerId, type, payload) {
+    draw() {
         if (this.isDestroyed) return;
-
-        // Cursor Movement (Always update, even if dead, so they can play next round)
-        if (type === 'TOUCH_MOVE') {
-            const cursor = this.cursors.get(playerId);
-            if (cursor) {
-                // Apply movement relative to scaled canvas
-                cursor.x = Math.max(0, Math.min(this.V_WIDTH, cursor.x + payload.dx * 1.5)); // 1.5x sensitivity
-                cursor.y = Math.max(0, Math.min(this.V_HEIGHT, cursor.y + payload.dy * 1.5));
+        const p = this.p;
+        
+        // --- TIMER LOGIC ---
+        if (this.state.phase === 'PLAYING' && this.config.winCondition === 'TIME') {
+            const now = p.millis();
+            const delta = now - this.timerLastTick;
+            this.timerLastTick = now;
+            
+            this.state.timer -= delta;
+            if (this.state.timer <= 0) {
+                this.state.timer = 0;
+                this.handleTimeUp();
             }
-            return;
+        } else {
+            this.timerLastTick = p.millis();
         }
 
-        // Handle Clicks via Virtual Cursor
-        if (type === 'TOUCH_CLICK') {
-            const cursor = this.cursors.get(playerId);
-            if (cursor) {
-                cursor.isDown = payload.down;
-                if (payload.down && this.onCursorClick) {
-                    this.onCursorClick(playerId, cursor.x, cursor.y);
-                }
-            }
-            // Also trigger standard 'PRESS' for hybrid games
-            if(payload.down) type = 'PRESS';
-            else type = 'RELEASE';
+        if (this.config.turnBasedBackgroundColor && this.mode !== 'demo') {
+            this.bgColor[0] = p.lerp(this.bgColor[0], this.targetBgColor[0], 0.05);
+            this.bgColor[1] = p.lerp(this.bgColor[1], this.targetBgColor[1], 0.05);
+            this.bgColor[2] = p.lerp(this.bgColor[2], this.targetBgColor[2], 0.05);
+            p.background(this.bgColor);
+        } else {
+            p.background(this.getBgColor());
         }
 
-        if (this.state.phase !== 'PLAYING') return;
+        p.push();
+        
+        let sx = 0, sy = 0;
+        if (this.shakeTimer > 0) {
+            this.shakeTimer--;
+            const damp = this.shakeTimer / 20;
+            sx = p.random(-1, 1) * 20 * damp;
+            sy = p.random(-1, 1) * 20 * damp;
+        }
+
+        p.translate(this.transX + sx, this.transY + sy);
+        p.scale(this.scaleFactor);
+
+        if (this.mode === 'demo' && this.state.phase === 'PLAYING') {
+            this.runDemoAI();
+        }
+
+        this.onDraw();
+        p.pop();
+    }
+
+    updateUI() {
+        if (!this.isDestroyed && this.ui) {
+            this.ui.updateScoreboard(this.players);
+        }
+    }
+
+    handleInput(playerId, type) {
+        if (this.isDestroyed || this.state.phase !== 'PLAYING') return;
 
         const p = this.players.find(pl => pl.id === playerId);
         if (!p || p.isEliminated || p.isPermEliminated) return;
@@ -122,73 +154,25 @@ export default class BaseGame {
         this.onPlayerInput(p, type); 
     }
 
-    draw() {
-        if (this.isDestroyed) return;
-        const p = this.p;
-        
-        p.background(this.bgColor);
-        p.push();
-        
-        let sx = 0, sy = 0;
-        if (this.shakeTimer > 0) {
-            this.shakeTimer--;
-            sx = p.random(-1, 1) * 20 * (this.shakeTimer / 20);
-            sy = p.random(-1, 1) * 20 * (this.shakeTimer / 20);
-        }
-
-        p.translate(this.transX + sx, this.transY + sy);
-        p.scale(this.scaleFactor);
-
-        if (this.mode === 'demo' && this.state.phase === 'PLAYING') {
-            this.runDemoAI();
-        }
-
-        this.onDraw();
-        this.drawCursors(); // Draw on top of game
-        
-        p.pop();
+    simulateInput(playerIndex, action) {
+        const p = this.players[playerIndex];
+        if (p) this.onPlayerInput(p, action);
     }
-
-    drawCursors() {
-        // Only draw cursors if using touchpad mode OR explicitly requested
-        // But drawing them always is fine for feedback
-        const p = this.p;
-        this.cursors.forEach((c, id) => {
-            // Don't draw if not moved recently? (Optional optimization)
-            p.push();
-            p.translate(c.x, c.y);
-            
-            p.fill(c.color);
-            p.stroke(255); p.strokeWeight(3);
-            
-            // Draw Hand Pointer
-            p.beginShape();
-            p.vertex(0, 0);
-            p.vertex(15, 45);
-            p.vertex(0, 35);
-            p.vertex(-15, 45);
-            p.endShape(p.CLOSE);
-            
-            // Click Ripple
-            if(c.isDown) {
-                p.noFill(); p.stroke(c.color); p.strokeWeight(4);
-                p.circle(0, 0, 50);
-            }
-            p.pop();
-        });
-    }
-
-    // ... (Existing startNewRound, checkRoundEnd, etc methods kept same) ...
+    
+    runDemoAI() {}
 
     startNewRound() {
         if (this.isDestroyed) return;
+
         this.state.phase = 'INTRO';
         this.state.round++;
         this.state.isRoundActive = true;
+        this.state.timer = this.config.roundDuration; // Reset Timer
         
         this.players.forEach(p => {
             if (this.config.roundResetType === 'ELIMINATION' && p.isPermEliminated) {
-                p.isEliminated = true; return;
+                p.isEliminated = true;
+                return;
             }
             p.lives = this.config.livesPerRound;
             p.isEliminated = false;
@@ -196,44 +180,153 @@ export default class BaseGame {
             p.customStatus = (this.config.livesPerRound > 1) ? p.lives : undefined;
         });
 
-        if (this.config.turnBased) this.validateTurn(true); 
+        if (this.config.turnBased) {
+            this.validateTurn(true); 
+        }
+
+        if (this.config.roundResetType === 'ELIMINATION') {
+            const survivors = this.players.filter(p => !p.isPermEliminated);
+            if (survivors.length <= 1) {
+                this.finishGame(); 
+                return;
+            }
+        }
+        
         this.updateUI();
         this.onRoundStart();
 
+        const delay = this.mode === 'demo' ? 100 : 800;
         setTimeout(() => {
             if (!this.isDestroyed) {
                 this.state.phase = 'PLAYING';
+                this.timerLastTick = this.p.millis();
             }
-        }, 800);
+        }, delay);
     }
 
-    // Modified EndRound to trigger Mobile Screen Update
+    nextTurn() {
+        if (!this.config.turnBased || this.isDestroyed) return;
+
+        let attempts = 0;
+        const total = this.players.length;
+        
+        do {
+            this.state.activePlayerIndex = (this.state.activePlayerIndex + 1) % total;
+            attempts++;
+        } while (
+            (this.players[this.state.activePlayerIndex].isEliminated || 
+             this.players[this.state.activePlayerIndex].isPermEliminated) && 
+            attempts < total
+        );
+
+        this.updateTurnVisuals();
+    }
+
+    validateTurn(randomize = false) {
+        const activePlayers = this.players.filter(p => !p.isEliminated && !p.isPermEliminated);
+        if (activePlayers.length === 0) return;
+
+        const current = this.players[this.state.activePlayerIndex];
+        
+        if (randomize || current.isEliminated || current.isPermEliminated) {
+            const nextP = activePlayers[Math.floor(Math.random() * activePlayers.length)];
+            this.state.activePlayerIndex = this.players.indexOf(nextP);
+            this.updateTurnVisuals();
+        }
+    }
+
+    updateTurnVisuals() {
+        if (this.isDestroyed) return;
+        const current = this.players[this.state.activePlayerIndex];
+        if (!current) return;
+
+        if (this.mode !== 'demo') {
+            this.ui.showTurnMessage(`${current.name}'s Turn!`, current.color);
+        }
+
+        if (this.config.turnBasedBackgroundColor) {
+            this.targetBgColor = this.hexToRgb(current.color);
+        }
+    }
+
+    eliminatePlayer(playerIdx) {
+        if (!this.state.isRoundActive || this.state.phase !== 'PLAYING' || this.isDestroyed) return;
+
+        const p = this.players[playerIdx];
+        if (!p || p.isEliminated) return;
+
+        p.lives--;
+        if (this.config.livesPerRound > 1) {
+            p.customStatus = p.lives; 
+            this.updateUI();
+        }
+
+        if (p.lives <= 0) {
+            if (this.config.eliminateOnDeath) {
+                p.isEliminated = true;
+                if (this.config.roundResetType === 'ELIMINATION') {
+                    p.isPermEliminated = true;
+                    if (this.checkWinCondition()) {
+                        setTimeout(() => this.finishGame(), 1000);
+                        return;
+                    }
+                }
+                this.onPlayerEliminated(p);
+            }
+            this.checkRoundEnd();
+        }
+    }
+
+    handleTimeUp() {
+        // Sort by Score (Desc)
+        const sorted = [...this.players].sort((a, b) => b.score - a.score);
+        // Handle Draw? For now, top score wins.
+        this.endRound(sorted[0]);
+    }
+
+    checkRoundEnd() {
+        if (this.isDestroyed) return;
+        const active = this.players.filter(p => !p.isEliminated);
+        
+        if (this.config.roundEndCriteria === 'SURVIVAL' && active.length <= 1) {
+            this.endRound(active.length === 1 ? active[0] : null);
+        } else if (this.config.roundEndCriteria === 'ALL_DEAD' && active.length === 0) {
+            const sorted = [...this.players].sort((a, b) => b.score - a.score);
+            this.endRound(sorted[0]); 
+        }
+    }
+
     endRound(roundWinner) {
         if (!this.state.isRoundActive || this.isDestroyed) return;
         this.state.isRoundActive = false;
         this.state.phase = 'ROUND_OVER';
         
-        if (roundWinner && this.mode !== 'demo') this.playSound('win');
+        if (roundWinner && this.mode !== 'demo') {
+            if (this.config.roundEndCriteria === 'SURVIVAL') {
+                roundWinner.score++;
+            }
+            this.playSound('win');
+        }
+
         this.updateUI();
         this.onRoundEnd(); 
 
         setTimeout(() => {
             if (this.isDestroyed) return;
             
+            // Check Game Win Condition
+            // For 'TIME' games, we assume they play 'winValue' number of rounds (e.g. Best of 3)
+            // But we actually store "Rounds Won" in a separate place?
+            // BaseGame structure usually assumes 'score' is rounds won.
+            // If the game uses 'score' for points (like PaintParty), we need to handle that in the Game file manually
+            // or trust checkWinCondition overrides.
+            
             if (this.checkWinCondition()) {
                 this.finishGame();
-            } else {
-                // If not game over, tell phones it's Round Over (Show Next Button)
-                if (this.mode !== 'demo') {
-                    // We need access to network manager to broadcast.
-                    // Access via global or context?
-                    // Context has input, input has network.
-                    const net = this.context.input.networkManager;
-                    if(net) net.broadcastState('ROUND_OVER');
-                    
-                    // Show Desktop UI too
+            } else if (this.config.autoLoop) {
+                if (this.mode !== 'demo' && this.config.showRoundResultUI) {
                     const title = roundWinner ? `${roundWinner.name} Wins!` : "Draw";
-                    this.ui.showMessage(title, "Waiting for Next Round...", "Next Round", () => this.startNewRound());
+                    this.ui.showMessage(title, "Next Round", "Next", () => this.startNewRound());
                 } else {
                     setTimeout(() => this.startNewRound(), 2000);
                 }
@@ -241,18 +334,58 @@ export default class BaseGame {
         }, 500);
     }
 
+    checkWinCondition() {
+        if (this.mode === 'demo') return false; 
+
+        const sorted = [...this.players].sort((a, b) => {
+            return this.config.scoreSorting === 'ASC' ? a.score - b.score : b.score - a.score;
+        });
+        const leader = sorted[0];
+
+        if (this.config.winCondition === 'SCORE' && leader.score >= this.config.winValue) {
+            this.state.winner = leader;
+            return true;
+        }
+        if (this.config.winCondition === 'ROUNDS' && this.state.round >= this.config.winValue) {
+            this.state.winner = leader;
+            return true;
+        }
+        if (this.config.winCondition === 'SURVIVAL') {
+            const survivors = this.players.filter(p => !p.isPermEliminated);
+            if (survivors.length <= 1) {
+                this.state.winner = survivors[0] || leader;
+                return true;
+            }
+        }
+        
+        // For TIME, we usually treat it like ROUNDS (Play X rounds then stop)
+        // Or if it's 1 long round, the timer ending calls finishGame manually.
+        if (this.config.winCondition === 'TIME') {
+             // Handled by handleTimeUp logic mostly
+             return false; 
+        }
+
+        return false;
+    }
+
     finishGame() {
         if (this.isDestroyed) return;
         this.state.phase = 'GAME_OVER';
         if (this.audio && this.mode !== 'demo') this.audio.setTrack('victory');
         
-        const net = this.context.input.networkManager;
-        if(net) net.broadcastState('GAME_OVER');
-
-        this.ui.showPodium(this.players, "Play Again", () => this.setup());
+        if (this.mode === 'tournament' && this.onGameComplete) {
+            this.onGameComplete(this.players); 
+        } else if (this.mode === 'active') {
+            this.ui.showPodium(this.players, "Play Again", () => this.setup());
+        } else {
+            this.setup();
+        }
     }
 
-    // ... (rest of helper methods) ...
+    destroy() {
+        this.isDestroyed = true;
+    }
+
     calculateLayout() {
         const w = this.p.width;
         const h = this.p.height;
@@ -260,18 +393,20 @@ export default class BaseGame {
         this.transX = (w - (this.V_WIDTH * this.scaleFactor)) / 2;
         this.transY = (h - (this.V_HEIGHT * this.scaleFactor)) / 2;
     }
-    
-    // Stub
-    onCursorClick(id, x, y) {}
-    simulateInput(playerIndex, action) {}
-    onPlayerInput(player, type) {}
+
+    hexToRgb(hex) {
+        const bigint = parseInt(hex.replace('#', ''), 16);
+        return [(bigint >> 16) & 255, (bigint >> 8) & 255, bigint & 255];
+    }
+
+    shake(intensity, duration = 20) { this.shakeTimer = duration; }
+    playSound(name) { if (this.audio && this.mode !== 'demo') this.audio.play(name); }
+
+    onSetup() {}
     onRoundStart() {}
     onRoundEnd() {}
-    onPlayerEliminated() {}
+    onPlayerEliminated(player) {}
+    onPlayerInput(player, type) {} 
     onDraw() {}
-    shake(i, d) { this.shakeTimer = d; }
-    playSound(n) { if (this.audio && this.mode !== 'demo') this.audio.play(n); }
-    validateTurn() {}
-    updateUI() { if(this.ui) this.ui.updateScoreboard(this.players); }
-    checkWinCondition() { return false; } // Override me
+    getBgColor() { return '#F0EAD6'; }
 }
