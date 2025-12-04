@@ -1,10 +1,13 @@
+/* src/core/TournamentManager.js */
+
 import { GAME_LIST } from '../GameRegistry.js';
 
 export default class TournamentManager {
-    constructor(gameRunner, uiManager, playerManager) {
+    constructor(gameRunner, uiManager, playerManager, onExitCallback) {
         this.runner = gameRunner;
         this.ui = uiManager;
         this.players = playerManager;
+        this.onExitCallback = onExitCallback; // Store the callback
 
         this.isActive = false;
         this.roundsTotal = 0;
@@ -61,8 +64,8 @@ export default class TournamentManager {
         };
 
         // Custom tweaks per game ID if needed
-        if (gameConfig.id === 'red-light') rules.winValue = 3; // 3 Races
-        if (gameConfig.id === 'code-breaker') rules.winValue = 1; // 1 Correct guess wins? Or points.
+        if (gameConfig.id === 'red-light') rules.winValue = 3; 
+        if (gameConfig.id === 'code-breaker') rules.winValue = 1; 
 
         this.runner.mount(
             gameConfig.class,
@@ -107,7 +110,12 @@ export default class TournamentManager {
         this.runner.audioManager.setTrack('victory');
 
         this.ui.showPodium(finalResults, "Back to Hub", () => {
-            location.reload();
+            // SOFT EXIT using callback
+            if (this.onExitCallback) {
+                this.onExitCallback();
+            } else {
+                location.reload(); // Fallback if no callback provided
+            }
         });
     }
 }
