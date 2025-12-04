@@ -81,49 +81,35 @@ function init() {
 
     // --- LISTENERS ---
     
-    // 1. Settings Button (Player Config)
     setupBtn.onclick = () => {
         audio.play('click');
         audio.setTrack('config'); 
-        
-        // Ensure phones stay in LOBBY mode (Editing)
         network.broadcastState('LOBBY');
-        
         renderVisualLobby();
         setupOverlay.classList.remove('hidden');
-        
-        // Pause background demos to save CPU while in menu
         pauseDemos();
     };
 
-    // 2. Save & Exit Config
     savePlayersBtn.onclick = () => {
         audio.play('click');
         audio.setTrack('lobby');
-        
         setupOverlay.classList.add('hidden');
         cleanupLobby(); 
-        
-        // Return to Hub View
         renderHub();    
     };
 
-    // 3. Add Local Player
     addPlayerBtn.onclick = () => {
         audio.play('click');
         players.addPlayer('local');
         renderVisualLobby();
     };
 
-    // 4. Back Button (In Game)
     backBtn.onclick = returnToHub;
 
-    // 5. Global Keybinds
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape' && currentMode === 'game') returnToHub();
     });
 
-    // 6. Network Updates (Mobile users changing names)
     window.addEventListener('player-update', () => {
         if (!setupOverlay.classList.contains('hidden')) {
             renderVisualLobby();
@@ -137,7 +123,6 @@ function init() {
 
 /**
  * REBUILDS THE MAIN MENU
- * Destroys old demos, clears the grid, and regenerates cards.
  */
 function renderHub() {
     currentMode = 'hub';
@@ -158,6 +143,10 @@ function renderHub() {
     
     // 5. Ensure Phones are in Editor Mode
     network.broadcastState('LOBBY');
+
+    // 6. FORCE RESUME (The Fix)
+    // We add a tiny delay to ensure the canvas DOM elements are ready
+    setTimeout(() => resumeDemos(), 50);
 }
 
 function createTournamentBanner() {
@@ -207,8 +196,7 @@ function createGameCard(gameConfig) {
     
     // Mount Background Demo
     const p5inst = runner.mount(gameConfig.class, canvasId, 'demo');
-    // Force start loop just in case
-    p5inst.loop();
+    p5inst.loop(); // Explicitly start loop
     demoInstances.push(p5inst);
 }
 
@@ -217,10 +205,8 @@ function enterGameMode(gameConfig) {
     audio.setTrack('game');
     gameStage.classList.remove('hidden');
     
-    // Pause background demos
     pauseDemos();
 
-    // Determine Phone Screen Type
     let screenType = 'CONTROLLER'; 
     if (gameConfig && gameConfig.id === 'avatar-match') {
         screenType = 'TOUCHPAD'; 
@@ -234,10 +220,10 @@ function returnToHub() {
     // Hide Stage
     gameStage.classList.add('hidden');
     
-    // Kill Active Game Logic
+    // Kill Active Game Logic (Hard Reset)
     runner.mount(null, 'game-canvas-container', 'active');
     
-    // Rebuild Menu (This will also send LOBBY state to phones)
+    // Rebuild Menu
     renderHub();
 }
 
@@ -326,6 +312,10 @@ function renderVisualLobby() {
         const inputDisabled = p.type === 'mobile' ? 'disabled title="Edit on Phone"' : '';
         const badge = p.type === 'mobile' ? '<span style="background:#3498db; color:white; padding:2px 6px; border-radius:4px; font-size:0.7em;">MOBILE</span>' : '';
 
+        // Added REMOVE button logic for ALL players (including Mobile)
+        // Only condition is > 2 players to keep game playable
+        const showRemove = activePlayers.length > 2;
+
         card.innerHTML = `
             <div class="setup-preview" id="${previewId}"></div>
             <div class="setup-inputs">
@@ -339,7 +329,7 @@ function renderVisualLobby() {
                 <button class="setup-btn var-btn" data-idx="${index}" ${inputDisabled}>${p.variant === 'default' ? 'Boy' : 'Girl'}</button>
                 <button class="setup-btn acc-btn" data-idx="${index}" ${inputDisabled}>${p.accessory}</button>
             </div>
-            ${activePlayers.length > 2 && p.type === 'local' ? `<button class="del-btn" data-idx="${index}">Remove</button>` : ''}
+            ${showRemove ? `<button class="del-btn" data-idx="${index}">Remove</button>` : ''}
             ${p.type === 'mobile' ? `<div style="text-align:center; font-size:0.8em; color:#999; margin-top:5px;">Connected</div>` : ''}
         `;
 
@@ -384,6 +374,7 @@ function renderVisualLobby() {
 function bindLobbyInputs() {
     const accessories = AvatarSystem.ACCESSORIES;
 
+    // ... Inputs Listeners (name, hue, var, acc) same as before ...
     document.querySelectorAll('.name-input').forEach(el => {
         el.addEventListener('input', (e) => {
             if(e.target.disabled) return;
@@ -426,9 +417,11 @@ function bindLobbyInputs() {
         });
     });
 
+    // --- REMOVE PLAYER LOGIC (UPDATED) ---
     document.querySelectorAll('.del-btn').forEach(el => {
         el.addEventListener('click', (e) => {
             audio.play('click');
+            // Remove ANY player (Local or Mobile)
             players.removePlayer(e.target.dataset.idx);
             renderVisualLobby();
         });
@@ -466,7 +459,7 @@ function getHueFromHex(hex) {
 }
 
 function setupListeners() {
-    // No redundant logic here, listener added in init() and bindLobbyInputs()
+    // Already set up inside init(), this is legacy
 }
 
 function attachGlobalSoundListeners() {
