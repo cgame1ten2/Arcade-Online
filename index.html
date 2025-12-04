@@ -4,8 +4,15 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Wonder Arcade</title>
+    
+    <!-- 1. Favicon Fix (Silences the 404 error) -->
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🕹️</text></svg>">
+
     <link rel="stylesheet" href="style.css">
-    <!-- External Libraries -->
+    
+    <!-- 2. External Libraries -->
+    <!-- Added PeerJS here so the Host can create rooms -->
+    <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/p5@1.9.0/lib/p5.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
 </head>
@@ -29,7 +36,7 @@
                 <div class="lobby-header">
                     <h2>Player Setup</h2>
                     <div class="lobby-controls">
-                        <button id="add-player-btn" class="secondary-btn">Add Player</button>
+                        <button id="add-player-btn" class="secondary-btn">Add Local Player</button>
                         <button id="save-players-btn" class="primary-btn">Start Playing</button>
                     </div>
                 </div>
