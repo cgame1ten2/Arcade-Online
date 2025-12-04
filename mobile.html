@@ -4,95 +4,185 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Arcade Controller</title>
+    <title>Wonder Controller</title>
+    
+    <!-- External Libraries -->
     <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
-    <!-- Include p5 for the Avatar preview on phone -->
     <script src="https://cdn.jsdelivr.net/npm/p5@1.9.0/lib/p5.min.js"></script>
+
     <style>
-        body { margin: 0; padding: 0; background: #2c3e50; font-family: sans-serif; overflow: hidden; touch-action: none; color: white; }
+        /* --- RESET & BASE --- */
+        body { 
+            margin: 0; padding: 0; 
+            background: #2c3e50; 
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; 
+            overflow: hidden; 
+            touch-action: none; /* Prevents scroll/zoom on touch */
+            user-select: none;
+            color: white; 
+        }
         
-        /* SCREENS */
-        .screen { display: none; width: 100vw; height: 100vh; flex-direction: column; align-items: center; justify-content: center; }
+        /* --- SCREEN MANAGER --- */
+        .screen { 
+            display: none; 
+            width: 100vw; height: 100vh; 
+            flex-direction: column; 
+            align-items: center; 
+            justify-content: center; 
+            transition: opacity 0.2s;
+        }
         .active { display: flex; }
 
-        /* CONNECT SCREEN */
-        input { font-size: 24px; padding: 10px; text-align: center; text-transform: uppercase; margin-bottom: 20px; border-radius: 8px; border: none; }
-        button { font-size: 20px; padding: 15px 30px; background: #2ecc71; border: none; color: white; border-radius: 8px; font-weight: bold; }
+        /* --- LOGIN SCREEN --- */
+        h1 { margin-bottom: 30px; color: #f1c40f; text-transform: uppercase; letter-spacing: 2px; }
+        .input-group { display: flex; flex-direction: column; gap: 15px; width: 80%; max-width: 300px; }
+        input { 
+            font-size: 30px; padding: 15px; 
+            text-align: center; text-transform: uppercase; 
+            border-radius: 12px; border: none; background: rgba(255,255,255,0.1); 
+            color: white; font-weight: bold; letter-spacing: 5px;
+        }
+        input::placeholder { color: rgba(255,255,255,0.3); letter-spacing: 1px; }
+        button.action-btn { 
+            font-size: 20px; padding: 15px; 
+            background: #2ecc71; border: none; color: white; 
+            border-radius: 12px; font-weight: bold; cursor: pointer;
+            box-shadow: 0 4px 0 #27ae60; transition: transform 0.1s;
+        }
+        button.action-btn:active { transform: translateY(4px); box-shadow: none; }
 
-        /* LOBBY SCREEN */
-        .avatar-preview { width: 200px; height: 200px; background: rgba(255,255,255,0.1); border-radius: 50%; margin-bottom: 20px; }
-        .control-row { margin: 10px 0; display: flex; gap: 10px; width: 80%; }
-        .control-row button { flex: 1; font-size: 16px; padding: 10px; }
-        input[type=range] { width: 100%; margin: 20px 0; }
+        /* --- LOBBY SCREEN --- */
+        .avatar-container { 
+            width: 220px; height: 220px; 
+            background: rgba(255,255,255,0.1); 
+            border-radius: 50%; margin-bottom: 20px; 
+            display: flex; justify-content: center; align-items: center;
+        }
+        .lobby-controls { width: 85%; max-width: 400px; display: flex; flex-direction: column; gap: 15px; }
+        .row { display: flex; gap: 10px; }
+        .row button { 
+            flex: 1; padding: 12px; border-radius: 8px; border: none; 
+            background: rgba(255,255,255,0.2); color: white; font-weight: 600;
+        }
+        input[type=range] { width: 100%; margin: 10px 0; accent-color: #f1c40f; }
 
-        /* ONE BUTTON CONTROLLER */
-        #btn-big { width: 90vw; height: 70vh; border-radius: 20px; border: 8px solid rgba(0,0,0,0.2); font-size: 40px; text-shadow: 2px 2px rgba(0,0,0,0.2); display: flex; align-items: center; justify-content: center; flex-direction: column; transition: transform 0.1s; }
-        #btn-big:active { transform: scale(0.98); }
+        /* --- CONTROLLER SCREEN (ONE BUTTON) --- */
+        #btn-big { 
+            width: 90vw; height: 70vh; 
+            border-radius: 30px; 
+            border: 8px solid rgba(0,0,0,0.1); 
+            font-size: 40px; font-weight: 900;
+            text-shadow: 2px 2px rgba(0,0,0,0.2); 
+            display: flex; align-items: center; justify-content: center; 
+            flex-direction: column; 
+            transition: transform 0.05s, filter 0.1s;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+            position: relative;
+            overflow: hidden;
+        }
+        #btn-big:active { transform: scale(0.96); filter: brightness(0.9); }
         
-        /* TOUCHPAD */
-        #touch-surface { width: 100vw; height: 100vh; background: #34495e; position: relative; }
-        #touch-msg { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); opacity: 0.5; pointer-events: none; }
+        /* --- TOUCHPAD SCREEN --- */
+        #touch-surface { 
+            width: 100vw; height: 100vh; 
+            background: radial-gradient(circle, #34495e 0%, #2c3e50 100%); 
+            position: relative; 
+        }
+        .touch-hint { 
+            position: absolute; top: 50%; left: 50%; 
+            transform: translate(-50%, -50%); 
+            opacity: 0.3; pointer-events: none; text-align: center; 
+            font-size: 1.2rem; line-height: 1.6;
+        }
     </style>
 </head>
 <body>
 
-    <!-- 1. LOGIN -->
+    <!-- 1. LOGIN SCREEN -->
     <div id="screen-login" class="screen active">
         <h1>Wonder Arcade</h1>
-        <p>Enter Room Code found on TV:</p>
-        <input type="text" id="room-code" placeholder="ABCD" maxlength="4">
-        <button onclick="connect()">JOIN GAME</button>
-        <p id="status" style="margin-top: 20px; color: #f1c40f;"></p>
+        <div class="input-group">
+            <input type="text" id="room-code" placeholder="CODE" maxlength="4">
+            <button class="action-btn" onclick="connect()">JOIN GAME</button>
+        </div>
+        <p id="status" style="margin-top: 20px; color: #f1c40f; font-size: 14px; opacity: 0; transition: opacity 0.3s;">Connecting...</p>
     </div>
 
     <!-- 2. LOBBY EDITOR -->
     <div id="screen-lobby" class="screen">
-        <div id="lobby-avatar" class="avatar-preview"></div>
-        <input type="text" id="p-name" placeholder="Name" oninput="sendUpdate()">
-        <input type="range" id="p-color" min="0" max="360" oninput="updateColor(this.value)">
-        <div class="control-row">
-            <button onclick="changeAccessory()">Accessory</button>
-            <button onclick="toggleVariant()">Boy/Girl</button>
+        <div id="lobby-avatar" class="avatar-container"></div>
+        
+        <div class="lobby-controls">
+            <input type="text" id="p-name" placeholder="YOUR NAME" style="font-size: 20px; background: rgba(0,0,0,0.3);" oninput="sendUpdate()">
+            
+            <div style="text-align: center; font-size: 0.8em; opacity: 0.7;">COLOR</div>
+            <input type="range" id="p-hue" min="0" max="360" oninput="updateColor(this.value)">
+            
+            <div class="row">
+                <button onclick="changeAccessory()">Accessory ➜</button>
+                <button onclick="toggleVariant()">Style ➜</button>
+            </div>
         </div>
-        <div style="margin-top: 20px; opacity: 0.6;">Check TV for Preview</div>
+        <div style="margin-top: 20px; opacity: 0.5; font-size: 12px;">👀 Look at the TV!</div>
     </div>
 
-    <!-- 3. ARCADE BUTTON -->
+    <!-- 3. ARCADE BUTTON (Game Mode) -->
     <div id="screen-controller" class="screen">
         <div id="btn-big">
-            <div id="btn-avatar" style="width: 120px; height: 120px;"></div>
-            <span>TAP!</span>
+            <!-- Avatar rendered here via JS -->
+            <div id="btn-avatar-target" style="pointer-events: none;"></div>
+            <span style="pointer-events: none; margin-top: 10px;">TAP!</span>
         </div>
     </div>
 
-    <!-- 4. TOUCHPAD -->
+    <!-- 4. TOUCHPAD (Mouse Mode) -->
     <div id="screen-touchpad" class="screen">
         <div id="touch-surface">
-            <div id="touch-msg">Swipe to Move<br>Tap to Click</div>
+            <div class="touch-hint">
+                🖱️ TRACKPAD MODE<br>
+                Slide to Move Cursor<br>
+                Tap to Click
+            </div>
         </div>
     </div>
 
-    <script src="./src/core/AvatarSystem.js" type="module"></script>
     <script type="module">
+        // Import the exact same Avatar Logic as the main game
         import AvatarSystem from './src/core/AvatarSystem.js';
 
-        // State
+        // --- STATE ---
         let peer, conn;
-        let player = { id: -1, color: '#333', name: 'Guest', accessory: 'Bear Ears', variant: 'default' };
-        let p5Lobby, p5Btn;
+        // Default local state
+        let player = { 
+            id: -1, 
+            color: '#e74c3c', 
+            hue: 0,
+            name: 'Guest', 
+            accessory: 'Bear Ears', 
+            variant: 'default' 
+        };
+        let p5Lobby, p5Btn; // P5 Instances
+        const accessories = AvatarSystem.ACCESSORIES;
 
+        // --- CONNECTION LOGIC ---
         window.connect = () => {
-            const code = document.getElementById('room-code').value.toUpperCase();
+            const codeInput = document.getElementById('room-code');
+            const code = codeInput.value.toUpperCase().trim();
             if(code.length < 4) return;
 
-            document.getElementById('status').innerText = "Connecting...";
+            const statusEl = document.getElementById('status');
+            statusEl.innerText = "Connecting to Host...";
+            statusEl.style.opacity = 1;
             
+            // Connect to PeerJS Cloud
             peer = new Peer();
+            
             peer.on('open', (id) => {
+                // Attempt connection to Host ID
                 conn = peer.connect(`wonder-${code}`);
                 
                 conn.on('open', () => {
-                    document.getElementById('status').innerText = "Connected! Waiting for Host...";
+                    statusEl.innerText = "Connected! Loading...";
                 });
 
                 conn.on('data', (data) => handleData(data));
@@ -101,81 +191,181 @@
                     alert("Disconnected from Host");
                     location.reload();
                 });
+
+                // Error handling inside connection
+                setTimeout(() => {
+                    if(!conn.open) {
+                        statusEl.innerText = "Room not found. Try again.";
+                        statusEl.style.color = "#e74c3c";
+                    }
+                }, 3000);
             });
         };
 
         function handleData(data) {
             if(data.type === 'INIT') {
-                player = { ...player, ...data }; // Merge IDs
-                showScreen('screen-lobby'); // Default to lobby initially
-                initP5();
+                // Initial Setup from Host
+                player = { ...player, ...data }; 
+                // Convert hex back to hue approx for slider (optional optimization)
+                showScreen('screen-lobby'); 
+                initP5Lobby();
             }
             else if (data.type === 'PING') {
+                // Latency Check
                 conn.send({ type: 'PONG', ts: data.ts });
             }
             else if (data.type === 'STATE_CHANGE') {
-                // Host changed game mode, switch UI
-                if (data.state === 'LOBBY') showScreen('screen-lobby');
+                // Host changed the game mode
+                
+                // Sync latest player data if provided
+                if(data.player) {
+                    player = { ...player, ...data.player };
+                }
+
+                if (data.state === 'LOBBY') {
+                    showScreen('screen-lobby');
+                }
                 else if (data.state === 'CONTROLLER') {
                     showScreen('screen-controller');
                     updateControllerVisuals();
+                    initP5Controller();
                 }
-                else if (data.state === 'TOUCHPAD') showScreen('screen-touchpad');
+                else if (data.state === 'TOUCHPAD') {
+                    showScreen('screen-touchpad');
+                }
             }
         }
 
-        // --- CONTROLLER LOGIC ---
-        const btn = document.getElementById('btn-big');
-        
-        const sendPress = (e) => { e.preventDefault(); conn.send({ type: 'INPUT', action: 'PRESS' }); btn.style.transform = "scale(0.95)"; };
-        const sendRelease = (e) => { e.preventDefault(); conn.send({ type: 'INPUT', action: 'RELEASE' }); btn.style.transform = "scale(1)"; };
-
-        btn.addEventListener('touchstart', sendPress);
-        btn.addEventListener('touchend', sendRelease);
-        btn.addEventListener('mousedown', sendPress);
-        btn.addEventListener('mouseup', sendRelease);
-
-        // --- LOBBY LOGIC ---
+        // --- SENDING UPDATES ---
         window.sendUpdate = () => {
             const name = document.getElementById('p-name').value;
             player.name = name;
-            conn.send({ type: 'UPDATE_PROFILE', payload: { name: name } });
+            // Send update to host
+            if(conn && conn.open) conn.send({ type: 'UPDATE_PROFILE', payload: { name: name } });
         };
 
-        window.updateColor = (hue) => {
-            const color = `hsl(${hue}, 70%, 50%)`; // Simplified logic, ideally match host Hex conversion
-            // Just sending hue for now or convert to Hex if needed
-            // For prototype, let's assume Host accepts updates
-            // (Requires HSL->Hex util here to match perfectly)
+        window.updateColor = (val) => {
+            const hue = parseInt(val);
+            player.hue = hue;
+            player.color = hslToHex(hue, 70, 50); // Convert for local P5
+            
+            // Send Hex to Host (Host uses Hex)
+            if(conn && conn.open) conn.send({ type: 'UPDATE_PROFILE', payload: { color: player.color } });
+        };
+
+        window.changeAccessory = () => {
+            let idx = accessories.indexOf(player.accessory);
+            idx = (idx + 1) % accessories.length;
+            player.accessory = accessories[idx];
+            if(conn && conn.open) conn.send({ type: 'UPDATE_PROFILE', payload: { accessory: player.accessory } });
+        };
+
+        window.toggleVariant = () => {
+            player.variant = player.variant === 'default' ? 'feminine' : 'default';
+            if(conn && conn.open) conn.send({ type: 'UPDATE_PROFILE', payload: { variant: player.variant } });
         }
+
+        // --- CONTROLLER INPUTS (The Big Button) ---
+        const btn = document.getElementById('btn-big');
         
-        // --- SCREEN MANAGER ---
+        const sendPress = (e) => { 
+            if(e.cancelable) e.preventDefault(); 
+            if(conn && conn.open) conn.send({ type: 'INPUT', action: 'PRESS' }); 
+            btn.style.transform = "scale(0.95)"; 
+        };
+        
+        const sendRelease = (e) => { 
+            if(e.cancelable) e.preventDefault(); 
+            if(conn && conn.open) conn.send({ type: 'INPUT', action: 'RELEASE' }); 
+            btn.style.transform = "scale(1)"; 
+        };
+
+        btn.addEventListener('touchstart', sendPress, { passive: false });
+        btn.addEventListener('touchend', sendRelease, { passive: false });
+        btn.addEventListener('mousedown', sendPress);
+        btn.addEventListener('mouseup', sendRelease);
+
+        // --- TRACKPAD INPUTS ---
+        const pad = document.getElementById('touch-surface');
+        let lastX = 0, lastY = 0;
+
+        pad.addEventListener('touchstart', (e) => {
+            lastX = e.touches[0].clientX;
+            lastY = e.touches[0].clientY;
+        }, { passive: false });
+
+        pad.addEventListener('touchmove', (e) => {
+            e.preventDefault(); // Stop scrolling
+            const curX = e.touches[0].clientX;
+            const curY = e.touches[0].clientY;
+            
+            // Calculate Delta (movement amount)
+            const dx = curX - lastX;
+            const dy = curY - lastY;
+            
+            lastX = curX;
+            lastY = curY;
+
+            // Send Delta to Host (Host moves cursor)
+            if(conn && conn.open) conn.send({ type: 'INPUT', action: 'TOUCH_MOVE', payload: { dx, dy } });
+        }, { passive: false });
+
+        pad.addEventListener('click', () => {
+             if(conn && conn.open) conn.send({ type: 'INPUT', action: 'TOUCH_CLICK' });
+        });
+
+        // --- VISUALS & P5 ---
         function showScreen(id) {
             document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
             document.getElementById(id).classList.add('active');
         }
 
-        function initP5() {
-            // Instantiate p5 for lobby avatar preview
-             const sketch = (p) => {
+        function initP5Lobby() {
+            if(p5Lobby) return; // Already running
+            const sketch = (p) => {
                 let sys;
                 p.setup = () => { p.createCanvas(200, 200); sys = new AvatarSystem(p); };
                 p.draw = () => {
                     p.clear(); p.translate(100, 100);
-                    sys.draw({ x:0, y:0, size:180, color: player.color, variant: player.variant, accessory: player.accessory });
+                    // Live rendering of avatar
+                    sys.draw({ x:0, y:0, size:180, color: player.color, variant: player.variant, accessory: player.accessory, expression: 'happy' });
                 };
             };
             p5Lobby = new p5(sketch, 'lobby-avatar');
         }
+
+        function initP5Controller() {
+            // Re-render avatar on the big button
+            if(p5Btn) { p5Btn.remove(); } 
+            
+            document.getElementById('btn-avatar-target').innerHTML = '';
+            
+            const sketch = (p) => {
+                let sys;
+                p.setup = () => { p.createCanvas(150, 150); sys = new AvatarSystem(p); };
+                p.draw = () => {
+                    p.clear(); p.translate(75, 75);
+                    sys.draw({ x:0, y:0, size:130, color: player.color, variant: player.variant, accessory: player.accessory, expression: 'angry' });
+                };
+            };
+            p5Btn = new p5(sketch, 'btn-avatar-target');
+        }
         
         function updateControllerVisuals() {
             btn.style.backgroundColor = player.color;
-            btn.style.borderColor = shadeColor(player.color, -20);
-            // Render small avatar on button...
+            btn.style.borderColor = "rgba(0,0,0,0.2)";
         }
-        
-        // Helper
-        function shadeColor(color, percent) { /* ... same as AvatarSystem ... */ return color; }
+
+        // Color Utils
+        function hslToHex(h, s, l) {
+            l /= 100; const a = s * Math.min(l, 1 - l) / 100;
+            const f = n => {
+                const k = (n + h / 30) % 12;
+                const color = l - a * Math.max(Math.min(k - 3, 9 - k, 1), -1);
+                return Math.round(255 * color).toString(16).padStart(2, '0');
+            };
+            return `#${f(0)}${f(8)}${f(4)}`;
+        }
 
     </script>
 </body>
