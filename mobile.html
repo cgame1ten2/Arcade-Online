@@ -1,254 +1,42 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Wonder Controller</title>
-    
-    <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/p5@1.9.0/lib/p5.min.js"></script>
+/* src/core/InputManager.js */
 
-    <style>
-        body { margin: 0; padding: 0; background: #2c3e50; font-family: 'Segoe UI', Roboto, sans-serif; overflow: hidden; touch-action: none; user-select: none; color: #333; }
-        .screen { display: none; width: 100vw; height: 100vh; flex-direction: column; align-items: center; justify-content: center; }
-        .active { display: flex; }
+export default class InputManager {
+    constructor(playerManager) {
+        this.playerManager = playerManager;
+        this.activeGameListener = null; 
+        this.networkManager = null; 
 
-        /* LOGIN */
-        #screen-login { background: #2c3e50; color: white; }
-        input.code-input { font-size: 30px; padding: 15px; text-align: center; text-transform: uppercase; border-radius: 12px; border: none; background: rgba(255,255,255,0.1); color: white; width: 200px; }
-        button.action-btn { font-size: 20px; padding: 15px 30px; margin-top: 15px; background: #2ecc71; border: none; color: white; border-radius: 12px; font-weight: bold; cursor: pointer; box-shadow: 0 4px 0 #27ae60; }
-        button.action-btn:active { transform: translateY(4px); box-shadow: none; }
+        window.addEventListener('keydown', (e) => this.handleKey(e, 'PRESS'));
+        window.addEventListener('keyup', (e) => this.handleKey(e, 'RELEASE'));
+    }
 
-        /* LOBBY EDITOR */
-        #screen-lobby { background: #2c3e50; }
-        .player-card { background: white; border-radius: 16px; padding: 20px; width: 85%; max-width: 350px; display: flex; flex-direction: column; gap: 15px; }
-        .setup-preview { width: 100%; height: 180px; background: #f8f9fa; border-radius: 12px; display: flex; justify-content: center; align-items: center; }
-        .name-input { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 8px; font-size: 1.1rem; text-align: center; box-sizing: border-box; }
-        .hue-slider { width: 100%; height: 8px; border-radius: 4px; background: linear-gradient(to right, #ff0000, #ffff00, #00ff00, #00ffff, #0000ff, #ff00ff, #ff0000); outline: none; -webkit-appearance: none; }
-        .hue-slider::-webkit-slider-thumb { -webkit-appearance: none; width: 24px; height: 24px; background: white; border: 2px solid #333; border-radius: 50%; }
-        .opts-row { display: flex; gap: 10px; }
-        .opt-btn { flex: 1; padding: 10px; background: #eee; border: none; border-radius: 6px; font-weight: 600; }
+    setNetworkManager(nm) { this.networkManager = nm; }
+    setGameListener(callback) { this.activeGameListener = callback; }
 
-        /* GAME CONTROLLER */
-        #screen-controller { background: #2c3e50; }
-        #btn-big { width: 85vw; height: 60vh; border-radius: 30px; border: 8px solid rgba(0,0,0,0.1); display: flex; align-items: center; justify-content: center; flex-direction: column; transition: transform 0.05s; }
-        #btn-big:active { transform: scale(0.96); }
+    handleKey(e, type) {
+        if (['Space', 'ArrowUp', 'ArrowDown', ' '].includes(e.key)) e.preventDefault();
+        let key = e.key;
+        if (e.code === 'NumpadAdd' || e.code === 'Equal') key = '+';
+        const players = this.playerManager.getActivePlayers();
+        const player = players.find(p => p.key === key);
+        if (player) this.triggerInput(player.id, type, false);
+    }
 
-        /* TOUCHPAD */
-        #screen-touchpad { background: #34495e; display: none; flex-direction: column; }
-        #touch-click-zone { flex: 0.3; width: 100%; background: #e74c3c; display: flex; align-items: center; justify-content: center; color: white; font-weight: 900; font-size: 2rem; border-bottom: 4px solid #c0392b; }
-        #touch-click-zone:active { background: #c0392b; transform: translateY(2px); }
-        #touch-move-zone { flex: 0.7; width: 100%; position: relative; background-image: radial-gradient(#465c71 1px, transparent 1px); background-size: 20px 20px; }
+    triggerInput(playerId, type, isNetworkInput, payload = null) {
+        if (!this.activeGameListener) return;
+
+        // If it's a VECTOR input (Joystick), we might want to store it in Player State 
+        // directly for games that poll, but for now we pass it through.
         
-        /* CONTEXT MENUS (Round Over / Game Over) */
-        #screen-round-over, #screen-game-over { background: rgba(0,0,0,0.9); color: white; text-align: center; }
-        .menu-title { font-size: 2rem; margin-bottom: 30px; color: #f1c40f; }
-        .menu-btn { width: 80%; padding: 20px; font-size: 1.2rem; background: white; border: none; border-radius: 12px; margin-bottom: 15px; font-weight: bold; cursor: pointer; color: #333; }
-        .menu-btn.danger { background: #e74c3c; color: white; }
-    </style>
-</head>
-<body>
-
-    <!-- LOGIN -->
-    <div id="screen-login" class="screen active">
-        <h1 style="color:#f1c40f;">WONDER ARCADE</h1>
-        <input type="text" id="room-code" class="code-input" placeholder="CODE" maxlength="4">
-        <button class="action-btn" onclick="connect()">JOIN</button>
-        <p id="status" style="margin-top:20px; color:#f1c40f; opacity:0;">Connecting...</p>
-    </div>
-
-    <!-- LOBBY -->
-    <div id="screen-lobby" class="screen">
-        <div class="player-card">
-            <div id="lobby-avatar" class="setup-preview"></div>
-            <input type="text" id="p-name" class="name-input" placeholder="Name" maxlength="12" oninput="sendUpdate()">
-            <input type="range" id="p-hue" class="hue-slider" min="0" max="360" oninput="updateColor(this.value)">
-            <div class="opts-row">
-                <button class="opt-btn" onclick="toggleVariant()">Style</button>
-                <button class="opt-btn" onclick="changeAccessory()">Hat</button>
-            </div>
-        </div>
-        <div style="margin-top:20px; color:white; opacity:0.6; text-align:center;">
-            Use <span style="color:#f1c40f; font-weight:bold;">TOUCHPAD</span> below<br>to select a game!
-        </div>
-        <!-- Mini Touchpad for Lobby -->
-        <div id="lobby-touchpad" style="width:100%; height:150px; background:rgba(255,255,255,0.1); margin-top:10px; border-radius:12px; display:flex; align-items:center; justify-content:center; color:rgba(255,255,255,0.3);">
-            Slide to Move Cursor<br>Tap to Click
-        </div>
-    </div>
-
-    <!-- GAME CONTROLLER -->
-    <div id="screen-controller" class="screen">
-        <div id="btn-big">
-            <div id="btn-avatar-target"></div>
-            <span style="pointer-events: none; margin-top: 10px; color: white; font-size: 1.5rem; opacity: 0.8;">TAP!</span>
-        </div>
-        <!-- Exit Button -->
-        <button onclick="confirmExit()" style="margin-top:20px; background:none; border:1px solid rgba(255,255,255,0.3); color:rgba(255,255,255,0.5); padding:5px 10px; border-radius:5px;">Exit Game</button>
-    </div>
-
-    <!-- TOUCHPAD -->
-    <div id="screen-touchpad" class="screen">
-        <div id="touch-click-zone">CLICK / GRAB</div>
-        <div id="touch-move-zone">
-            <div style="position:absolute; top:50%; left:50%; transform:translate(-50%, -50%); opacity:0.3; color:white;">TRACKPAD</div>
-        </div>
-    </div>
-
-    <!-- ROUND OVER -->
-    <div id="screen-round-over" class="screen">
-        <div class="menu-title">ROUND OVER</div>
-        <button class="menu-btn" onclick="sendCmd('NEXT_ROUND')">Play Next Round ➜</button>
-    </div>
-
-    <!-- GAME OVER (PODIUM) -->
-    <div id="screen-game-over" class="screen">
-        <div class="menu-title">GAME OVER</div>
-        <button class="menu-btn" onclick="confirmPlayAgain()">Play Again ↺</button>
-        <button class="menu-btn danger" onclick="confirmExit()">Back to Lobby ✖</button>
-    </div>
-
-    <script type="module">
-        import AvatarSystem from './src/core/AvatarSystem.js';
-
-        let peer, conn;
-        let player = { id: -1, color: '#e74c3c', name: 'Guest', accessory: 'Bear Ears', variant: 'default' };
-        let p5Lobby, p5Btn; 
-        const accessories = AvatarSystem.ACCESSORIES;
-
-        window.connect = () => {
-            const code = document.getElementById('room-code').value.toUpperCase().trim();
-            if(code.length < 4) return;
-            document.getElementById('status').style.opacity = 1;
-            
-            peer = new Peer();
-            peer.on('open', (id) => {
-                conn = peer.connect(`wonder-${code}`);
-                conn.on('open', () => { document.getElementById('status').innerText = "Connected!"; });
-                conn.on('data', handleData);
-                conn.on('close', () => { alert("Host Disconnected"); location.reload(); });
-            });
-        };
-
-        function handleData(data) {
-            if(data.type === 'INIT') {
-                player = { ...player, ...data };
-                showScreen('screen-lobby');
-                initP5Lobby();
-                document.getElementById('p-name').value = player.name;
-            }
-            else if (data.type === 'PING') conn.send({ type: 'PONG', ts: data.ts });
-            else if (data.type === 'STATE_CHANGE') {
-                if(data.player) player = { ...player, ...data.player };
-                
-                // Show specific screens based on Host State
-                if (data.state === 'LOBBY') showScreen('screen-lobby');
-                else if (data.state === 'CONTROLLER') { showScreen('screen-controller'); updateControllerVisuals(); initP5Controller(); }
-                else if (data.state === 'TOUCHPAD') showScreen('screen-touchpad');
-                else if (data.state === 'ROUND_OVER') showScreen('screen-round-over');
-                else if (data.state === 'GAME_OVER') showScreen('screen-game-over');
-            }
-        }
-
-        // --- COMMANDS ---
-        window.sendUpdate = () => {
-            player.name = document.getElementById('p-name').value;
-            if(conn) conn.send({ type: 'UPDATE_PROFILE', payload: { name: player.name } });
-        };
-        window.updateColor = (val) => {
-            player.color = hslToHex(val, 70, 50);
-            if(conn) conn.send({ type: 'UPDATE_PROFILE', payload: { color: player.color } });
-        };
-        window.changeAccessory = () => {
-            let idx = accessories.indexOf(player.accessory);
-            player.accessory = accessories[(idx + 1) % accessories.length];
-            if(conn) conn.send({ type: 'UPDATE_PROFILE', payload: { accessory: player.accessory } });
-        };
-        window.toggleVariant = () => {
-            player.variant = player.variant === 'default' ? 'feminine' : 'default';
-            if(conn) conn.send({ type: 'UPDATE_PROFILE', payload: { variant: player.variant } });
-        }
-
-        window.sendCmd = (action) => { if(conn) conn.send({ type: 'COMMAND', action: action }); }
-        
-        window.confirmExit = () => { if(confirm("Go back to Lobby?")) window.sendCmd('EXIT'); }
-        window.confirmPlayAgain = () => { if(confirm("Replay this game?")) window.sendCmd('RESTART_GAME'); }
-
-        // --- INPUTS ---
-        const btn = document.getElementById('btn-big');
-        const sendInput = (action, payload) => { if(conn) conn.send({ type: 'INPUT', action: action, payload: payload }); };
-        
-        btn.addEventListener('touchstart', (e) => { e.preventDefault(); sendInput('PRESS'); btn.style.transform = "scale(0.96)"; });
-        btn.addEventListener('touchend', (e) => { e.preventDefault(); sendInput('RELEASE'); btn.style.transform = "scale(1)"; });
-
-        // --- SHARED TOUCHPAD LOGIC (Game & Lobby) ---
-        function attachTouchpad(moveEl, clickEl) {
-            let lastX=0, lastY=0;
-            
-            // Movement
-            moveEl.addEventListener('touchstart', (e) => { lastX = e.touches[0].clientX; lastY = e.touches[0].clientY; }, {passive:false});
-            moveEl.addEventListener('touchmove', (e) => {
-                e.preventDefault();
-                const cx = e.touches[0].clientX; const cy = e.touches[0].clientY;
-                // Send Delta
-                const dx = (cx - lastX) * 2.0; // Sensitivity boost
-                const dy = (cy - lastY) * 2.0;
-                sendInput('TOUCH_MOVE', { dx, dy });
-                lastX = cx; lastY = cy;
-            }, {passive:false});
-
-            // Click (If Click Element provided)
-            if(clickEl) {
-                clickEl.addEventListener('touchstart', (e) => { e.preventDefault(); sendInput('TOUCH_CLICK', { down: true }); });
-                clickEl.addEventListener('touchend', (e) => { e.preventDefault(); sendInput('TOUCH_CLICK', { down: false }); });
+        if (isNetworkInput) {
+            this.activeGameListener(playerId, type, payload);
+        } else {
+            const delay = this.networkManager ? this.networkManager.systemLag : 0;
+            if (delay > 0) {
+                setTimeout(() => { this.activeGameListener(playerId, type, payload); }, delay);
             } else {
-                // If only one element (Lobby mini-pad), tap = click
-                moveEl.addEventListener('click', () => sendInput('TOUCH_CLICK', { down: true })); // Simple tap
+                this.activeGameListener(playerId, type, payload);
             }
         }
-
-        // Attach to Main Touchpad
-        attachTouchpad(document.getElementById('touch-move-zone'), document.getElementById('touch-click-zone'));
-        // Attach to Lobby Touchpad
-        attachTouchpad(document.getElementById('lobby-touchpad'), null);
-
-
-        // --- VISUALS ---
-        function showScreen(id) {
-            document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-            document.getElementById(id).classList.add('active');
-        }
-
-        function initP5Lobby() {
-            if(p5Lobby) return;
-            const sketch = (p) => {
-                let sys;
-                p.setup = () => { p.createCanvas(200, 180); sys = new AvatarSystem(p); };
-                p.draw = () => {
-                    p.clear(); p.translate(100, 100);
-                    // Adjusted Y and Size so Ears don't clip
-                    sys.draw({ x:0, y:10, size:130, color: player.color, variant: player.variant, accessory: player.accessory, expression: 'happy' });
-                };
-            };
-            p5Lobby = new p5(sketch, 'lobby-avatar');
-        }
-
-        function initP5Controller() {
-            if(p5Btn) p5Btn.remove();
-            document.getElementById('btn-avatar-target').innerHTML = '';
-            const sketch = (p) => {
-                let sys;
-                p.setup = () => { p.createCanvas(150, 150); sys = new AvatarSystem(p); };
-                p.draw = () => {
-                    p.clear(); p.translate(75, 75);
-                    sys.draw({ x:0, y:0, size:100, color: player.color, variant: player.variant, accessory: player.accessory, expression: 'angry' });
-                };
-            };
-            p5Btn = new p5(sketch, 'btn-avatar-target');
-        }
-        
-        function updateControllerVisuals() { btn.style.backgroundColor = player.color; }
-        function hslToHex(h,s,l) { l/=100; const a=s*Math.min(l,1-l)/100; const f=n=>{const k=(n+h/30)%12; const c=l-a*Math.max(Math.min(k-3,9-k,1),-1); return Math.round(255*c).toString(16).padStart(2,'0');}; return `#${f(0)}${f(8)}${f(4)}`; }
-    </script>
-</body>
-</html>
+    }
+}
