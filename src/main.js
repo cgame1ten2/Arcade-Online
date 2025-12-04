@@ -1,3 +1,5 @@
+/* src/main.js */
+
 import PlayerManager from './core/PlayerManager.js';
 import InputManager from './core/InputManager.js';
 import UIManager from './core/UIManager.js';
@@ -5,6 +7,7 @@ import GameRunner from './core/GameRunner.js';
 import AudioManager from './core/AudioManager.js';
 import AvatarSystem from './core/AvatarSystem.js';
 import TournamentManager from './core/TournamentManager.js';
+import NetworkManager from './core/NetworkManager.js'; // NEW IMPORT
 import { GAME_LIST } from './GameRegistry.js';
 
 const players = new PlayerManager();
@@ -14,9 +17,14 @@ const audio = new AudioManager();
 const runner = new GameRunner(players, inputs, ui, audio);
 const tournament = new TournamentManager(runner, ui, players);
 
+// NEW: Initialize Network Manager
+const network = new NetworkManager(players, inputs);
+// Connect Inputs to Network for Lag Equalization
+inputs.setNetworkManager(network);
+
 let currentMode = 'hub';
 let lobbyInstances = [];
-let demoInstances = []; // Registry for background demos
+let demoInstances = [];
 
 // DOM Elements
 const hubGrid = document.getElementById('hub-grid');
@@ -27,6 +35,7 @@ const setupOverlay = document.getElementById('setup-overlay');
 const savePlayersBtn = document.getElementById('save-players-btn');
 const addPlayerBtn = document.getElementById('add-player-btn');
 const playerConfigGrid = document.getElementById('player-config-grid');
+const mainHeader = document.getElementById('main-header');
 
 function init() {
     console.log("🚀 Wonder Arcade Engine Started");
@@ -38,11 +47,51 @@ function init() {
     };
     document.addEventListener('click', startAudio);
 
+    // --- NEW: Add Host Button ---
+    const hostBtn = document.createElement('button');
+    hostBtn.className = 'icon-btn';
+    hostBtn.innerText = '📡 Host Game';
+    hostBtn.style.marginRight = '10px';
+    hostBtn.onclick = () => {
+        audio.play('click');
+        hostBtn.innerText = 'Starting...';
+        hostBtn.disabled = true;
+
+        network.hostGame();
+
+        // Callback when PeerJS is ready
+        network.onHostReady = (code) => {
+            hostBtn.innerText = `Room: ${code}`;
+            hostBtn.style.background = '#2ecc71';
+            hostBtn.style.borderColor = '#27ae60';
+            hostBtn.onclick = null; // Disable click
+
+            // Show a friendly toast/message explaining what to do
+            ui.showMessage(
+                `Room Code: ${code}`,
+                "Open mobile.html on your phone to join!",
+                "OK",
+                () => ui.hideMessage()
+            );
+        };
+    };
+    // Insert before Settings button
+    mainHeader.insertBefore(hostBtn, setupBtn);
+
+    // --- NEW: Listen for Network Player Updates ---
+    window.addEventListener('player-update', () => {
+        // If we are currently in the Settings menu, refresh the grid
+        if (!setupOverlay.classList.contains('hidden')) {
+            renderVisualLobby();
+        }
+        // If in Hub, maybe refresh other things (optional)
+    });
+
     createTournamentBanner();
-    
+
     // Create Game Cards & Register Demos
     GAME_LIST.forEach(game => createGameCard(game));
-    
+
     setupListeners();
     setupLobby();
     attachGlobalSoundListeners();
@@ -84,6 +133,8 @@ function resumeDemos() {
 
 function showTournamentSetup() {
     audio.play('click');
+    // Tell phones we are in lobby/setup mode
+    network.broadcastState('LOBBY');
 
     ui.centerMessage.innerHTML = `
         <div class="message-card">
@@ -102,7 +153,8 @@ function showTournamentSetup() {
     window.startTourney = (rounds) => {
         ui.hideMessage();
         audio.play('click');
-        enterGameMode();
+        // We don't enter a specific game yet, TournamentManager handles that
+        enterGameMode(null);
         tournament.startTournament(rounds);
     };
 
@@ -127,48 +179,58 @@ function createGameCard(gameConfig) {
 
     card.addEventListener('click', () => {
         audio.play('click');
-        enterGameMode();
+        enterGameMode(gameConfig);
         // Standard Arcade Mode
         runner.mount(gameConfig.class, 'game-canvas-container', 'active');
     });
 
     hubGrid.appendChild(card);
-    
+
     // Mount Demo and Store Instance
     const p5inst = runner.mount(gameConfig.class, canvasId, 'demo');
     demoInstances.push(p5inst);
 }
 
-function enterGameMode() {
+/**
+ * Transition to Game View
+ * @param {object} gameConfig - Optional config to determine phone screen type
+ */
+function enterGameMode(gameConfig) {
     currentMode = 'game';
     audio.setTrack('game');
     gameStage.classList.remove('hidden');
-    // FREEZE BACKGROUND DEMOS TO SAVE CPU
     pauseDemos();
+
+    // Determine Phone Screen Type
+    let screenType = 'CONTROLLER'; // Default Big Button
+
+    if (gameConfig && gameConfig.id === 'avatar-match') {
+        screenType = 'TOUCHPAD'; // Mouse/Touch based game
+    }
+
+    network.broadcastState(screenType);
 }
 
 function returnToHub() {
     audio.play('click');
-    // Instead of reload, we can just hide the stage and cleanup active game
-    // But reload is safer to ensure memory is 100% clean for long sessions.
-    // If we wanted to avoid reload:
-    /*
-    currentMode = 'hub';
-    audio.setTrack('lobby');
-    gameStage.classList.add('hidden');
-    runner.mount(null, null); // kill active
-    resumeDemos();
-    */
+
+    // Tell phones to go back to Lobby Editor
+    network.broadcastState('LOBBY');
+
     location.reload();
 }
 
 function setupLobby() {
     setupBtn.addEventListener('click', () => {
         audio.play('click');
-        audio.setTrack('config'); 
+        audio.setTrack('config');
+
+        // Phones should stay in Lobby mode (default), but broadcasting ensures sync
+        network.broadcastState('LOBBY');
+
         renderVisualLobby();
         setupOverlay.classList.remove('hidden');
-        pauseDemos(); // Pause grid while in settings too
+        pauseDemos();
     });
 
     savePlayersBtn.addEventListener('click', () => {
@@ -176,12 +238,12 @@ function setupLobby() {
         audio.setTrack('lobby');
         setupOverlay.classList.add('hidden');
         cleanupLobby();
-        location.reload(); // Reload to refresh demo avatars
+        location.reload();
     });
 
     addPlayerBtn.addEventListener('click', () => {
         audio.play('click');
-        players.addPlayer();
+        players.addPlayer('local'); // Explicitly add local player via button
         renderVisualLobby();
     });
 }
@@ -229,23 +291,35 @@ function renderVisualLobby() {
     activePlayers.forEach((p, index) => {
         const card = document.createElement('div');
         card.className = 'player-setup-card';
+        // Add visual distinction for Mobile players
+        if (p.type === 'mobile') {
+            card.style.border = "3px solid #3498db";
+        }
+
         const previewId = `preview-${index}`;
+        const inputDisabled = p.type === 'mobile' ? 'disabled title="Edit on Phone"' : '';
+        const badge = p.type === 'mobile' ? '<span style="background:#3498db; color:white; padding:2px 6px; border-radius:4px; font-size:0.7em;">MOBILE</span>' : '';
 
         card.innerHTML = `
             <div class="setup-preview" id="${previewId}"></div>
             <div class="setup-inputs">
-                <input type="text" value="${p.name}" class="name-input" data-idx="${index}">
-                <input type="range" min="0" max="360" value="${getHueFromHex(p.color)}" class="hue-slider" data-idx="${index}">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
+                    ${badge}
+                </div>
+                <input type="text" value="${p.name}" class="name-input" data-idx="${index}" ${inputDisabled}>
+                <input type="range" min="0" max="360" value="${getHueFromHex(p.color)}" class="hue-slider" data-idx="${index}" ${inputDisabled}>
             </div>
             <div class="setup-opts">
-                <button class="setup-btn var-btn" data-idx="${index}">${p.variant === 'default' ? 'Boy' : 'Girl'}</button>
-                <button class="setup-btn acc-btn" data-idx="${index}">${p.accessory}</button>
+                <button class="setup-btn var-btn" data-idx="${index}" ${inputDisabled}>${p.variant === 'default' ? 'Boy' : 'Girl'}</button>
+                <button class="setup-btn acc-btn" data-idx="${index}" ${inputDisabled}>${p.accessory}</button>
             </div>
-            ${activePlayers.length > 2 ? `<button class="del-btn" data-idx="${index}">Remove</button>` : ''}
+            ${activePlayers.length > 2 && p.type === 'local' ? `<button class="del-btn" data-idx="${index}">Remove</button>` : ''}
+            ${p.type === 'mobile' ? `<div style="text-align:center; font-size:0.8em; color:#999; margin-top:5px;">Connected</div>` : ''}
         `;
 
         playerConfigGrid.appendChild(card);
 
+        // P5 Instance for Avatar Preview
         const sketch = (sketchP) => {
             const avatars = new AvatarSystem(sketchP);
             let expression = 'idle';
@@ -269,6 +343,7 @@ function renderVisualLobby() {
                     setTimeout(() => expression = 'idle', 1000);
                 }
 
+                // IMPORTANT: Fetch latest player data every frame to catch updates from phone
                 const currP = players.getPlayer(index);
                 if (currP) {
                     avatars.draw({
@@ -290,12 +365,14 @@ function bindLobbyInputs() {
 
     document.querySelectorAll('.name-input').forEach(el => {
         el.addEventListener('input', (e) => {
+            if (e.target.disabled) return;
             players.updatePlayer(e.target.dataset.idx, { name: e.target.value });
         });
     });
 
     document.querySelectorAll('.hue-slider').forEach(el => {
         el.addEventListener('input', (e) => {
+            if (e.target.disabled) return;
             const hue = e.target.value;
             const color = hslToHex(hue, 85, 60);
             players.updatePlayer(e.target.dataset.idx, { color: color });
@@ -304,6 +381,7 @@ function bindLobbyInputs() {
 
     document.querySelectorAll('.var-btn').forEach(el => {
         el.addEventListener('click', (e) => {
+            if (e.target.disabled) return;
             const idx = e.target.dataset.idx;
             const p = players.getPlayer(idx);
             const newVar = p.variant === 'default' ? 'feminine' : 'default';
@@ -315,6 +393,7 @@ function bindLobbyInputs() {
 
     document.querySelectorAll('.acc-btn').forEach(el => {
         el.addEventListener('click', (e) => {
+            if (e.target.disabled) return;
             const idx = e.target.dataset.idx;
             const p = players.getPlayer(idx);
             let currIdx = accessories.indexOf(p.accessory);
@@ -335,6 +414,7 @@ function bindLobbyInputs() {
     });
 }
 
+// ... HSL Helper Functions remain unchanged ...
 function hslToHex(h, s, l) {
     l /= 100; const a = s * Math.min(l, 1 - l) / 100;
     const f = n => {
