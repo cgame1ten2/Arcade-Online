@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Wonder Arcade</title>
+    <link rel="stylesheet" href="style.css">
+    <!-- External Libraries -->
+    <script src="https://cdn.jsdelivr.net/npm/p5@1.9.0/lib/p5.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
+</head>
+<body>
+
+    <!-- APP LAYER: Main container for the Lobby and Overlays -->
+    <div id="app-layer">
+        <header id="main-header">
+            <div class="logo">Wonder Arcade</div>
+            <button id="settings-btn" class="icon-btn">Players Config</button>
+        </header>
+
+        <!-- The Grid where Game Cards (and the Tournament Banner) live -->
+        <main id="hub-grid">
+            <!-- Injected by main.js -->
+        </main>
+
+        <!-- FULL SCREEN LOBBY OVERLAY -->
+        <div id="setup-overlay" class="overlay hidden">
+            <div class="lobby-container">
+                <div class="lobby-header">
+                    <h2>Player Setup</h2>
+                    <div class="lobby-controls">
+                        <button id="add-player-btn" class="secondary-btn">Add Player</button>
+                        <button id="save-players-btn" class="primary-btn">Start Playing</button>
+                    </div>
+                </div>
+                <div id="player-config-grid">
+                    <!-- Visual Player Cards injected here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ACTIVE GAME STAGE: Where the game canvas lives -->
+    <div id="game-stage" class="hidden">
+        <div id="game-canvas-container"></div>
+        
+        <!-- In-Game UI Layer (Scoreboard, Back Button) -->
+        <div id="game-ui-layer">
+            <div id="ui-top-bar">
+                <button id="back-to-hub-btn" class="small-btn">Exit Game</button>
+                <div id="ui-scoreboard"></div>
+            </div>
+            <!-- Toasts are injected here dynamically -->
+        </div>
+    </div>
+
+    <!-- GLOBAL UI OVERLAYS (Always on top, e.g., Podium, Tournament Setup) -->
+    <div id="ui-center-message"></div>
+
+    <!-- Main Entry Point -->
+    <script type="module" src="./src/main.js"></script>
+</body>
+</html>
