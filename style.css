@@ -195,7 +195,7 @@ body {
 
 .player-badge {
     background: rgba(255, 255, 255, 0.95);
-    padding: 6px 12px;
+    padding: 6px 16px; /* More padding */
     border-radius: 20px;
     display: flex;
     align-items: center;
@@ -204,6 +204,8 @@ body {
     font-size: 0.9rem;
     box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
     transition: opacity 0.3s;
+    white-space: nowrap; /* PREVENTS WRAPPING */
+    min-width: 100px; /* Ensures minimum width */
 }
 
 .p-dot {
@@ -724,4 +726,5 @@ body {
 
 .hidden {
     display: none !important;
+
 }
