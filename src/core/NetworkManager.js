@@ -8,6 +8,7 @@ export default class NetworkManager {
         this.connections = new Map();
         this.roomId = null;
         this.systemLag = 0; 
+        
         setInterval(() => this.measureLatency(), 1000);
     }
 
@@ -28,11 +29,15 @@ export default class NetworkManager {
         conn.on('open', () => {
             const newPlayer = this.players.addPlayer('mobile'); 
             this.connections.set(conn.peer, { conn, playerId: newPlayer.id, rtt: 0 });
+            
+            // Send Init
             this.sendToPhone(conn, {
                 type: 'INIT', playerId: newPlayer.id,
                 color: newPlayer.color, name: newPlayer.name,
                 accessory: newPlayer.accessory, variant: newPlayer.variant
             });
+            
+            // Update Host UI
             window.dispatchEvent(new CustomEvent('player-update'));
         });
 
@@ -58,27 +63,41 @@ export default class NetworkManager {
                 client.rtt = performance.now() - data.ts;
                 this.recalculateLag();
                 break;
+                
             case 'INPUT':
+                // Handles PRESS, RELEASE, and now VECTOR (Joystick)
                 this.input.triggerInput(client.playerId, data.action, true, data.payload);
                 break;
+                
             case 'UPDATE_PROFILE':
                 this.players.updatePlayer(client.playerId, data.payload);
                 window.dispatchEvent(new CustomEvent('player-update')); 
                 break;
-            // NEW: COMMAND HANDLING
+                
             case 'COMMAND':
-                window.dispatchEvent(new CustomEvent('remote-command', { detail: data.action }));
+                // Dispatch generic commands (EXIT, NEXT_ROUND, PLAY_AGAIN, SELECT_GAME)
+                window.dispatchEvent(new CustomEvent('remote-command', { detail: data }));
                 break;
         }
     }
 
-    broadcastState(stateType, payload = {}) {
+    /**
+     * Broadcast State + Context
+     * @param {string} stateType - LOBBY, CONTROLLER, TOUCHPAD
+     * @param {string} context - IDLE, PLAYING, ROUND_OVER, GAME_OVER (Controls Menu Options)
+     */
+    broadcastState(stateType, context = 'IDLE', payload = {}) {
         this.connections.forEach((client) => {
             const player = this.players.getPlayerById(client.playerId);
             if(!player) return;
             const packet = {
-                type: 'STATE_CHANGE', state: stateType, 
-                player: { color: player.color, name: player.name, accessory: player.accessory, variant: player.variant },
+                type: 'STATE_CHANGE', 
+                state: stateType, 
+                context: context, // New field for Menu Logic
+                player: { 
+                    color: player.color, name: player.name, 
+                    accessory: player.accessory, variant: player.variant 
+                },
                 ...payload
             };
             if(client.conn.open) client.conn.send(packet);
