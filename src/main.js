@@ -23,6 +23,7 @@ inputs.setNetworkManager(network);
 
 // --- GLOBAL STATE ---
 let currentMode = 'hub';
+let currentGameState = 'IDLE'; // IDLE, PLAYING, ROUND_OVER, GAME_OVER
 let lobbyInstances = []; 
 let demoInstances = [];
 
@@ -80,11 +81,10 @@ function init() {
     }
 
     // --- LISTENERS ---
-    
     setupBtn.onclick = () => {
         audio.play('click');
         audio.setTrack('config'); 
-        network.broadcastState('LOBBY');
+        network.broadcastState('LOBBY', 'IDLE');
         renderVisualLobby();
         setupOverlay.classList.remove('hidden');
         pauseDemos();
@@ -111,20 +111,38 @@ function init() {
     });
 
     window.addEventListener('player-update', () => {
-        if (!setupOverlay.classList.contains('hidden')) {
-            renderVisualLobby();
-        }
+        if (!setupOverlay.classList.contains('hidden')) renderVisualLobby();
     });
 
+    // --- REMOTE COMMAND HANDLING ---
     window.addEventListener('remote-command', (e) => {
-        const action = e.detail;
-        if (action === 'EXIT') {
-            returnToHub();
-        } 
-        else if (action === 'RESTART') {
-            // If in active game, restart round
+        const cmd = e.detail; // { action: 'EXIT', payload: '...' }
+        
+        if (cmd.action === 'EXIT') returnToHub();
+        
+        else if (cmd.action === 'NEXT_ROUND') {
             if (currentMode === 'game' && runner.activeGame) {
-                runner.activeGame.setup();
+                // If the game is showing "Next Round" UI, trigger it
+                // We assume BaseGame exposes a method or we force a restart
+                runner.activeGame.startNewRound();
+                network.broadcastState('CONTROLLER', 'PLAYING');
+            }
+        }
+        
+        else if (cmd.action === 'PLAY_AGAIN') {
+            if (currentMode === 'game' && runner.activeGame) {
+                runner.activeGame.setup(); // Full Reset
+                network.broadcastState('CONTROLLER', 'PLAYING');
+            }
+        }
+        
+        else if (cmd.action === 'SELECT_GAME') {
+            const gameId = cmd.payload;
+            const gameConfig = GAME_LIST.find(g => g.id === gameId);
+            if (gameConfig && currentMode === 'hub') {
+                audio.play('click');
+                enterGameMode(gameConfig);
+                runner.mount(gameConfig.class, 'game-canvas-container', 'active');
             }
         }
     });
@@ -134,31 +152,23 @@ function init() {
     attachGlobalSoundListeners();
 }
 
-/**
- * REBUILDS THE MAIN MENU
- */
 function renderHub() {
     currentMode = 'hub';
+    currentGameState = 'IDLE';
     
-    // 1. Clean up old demos
     demoInstances.forEach(inst => inst.remove());
     demoInstances = [];
-    
-    // 2. Clear Grid
     hubGrid.innerHTML = '';
 
-    // 3. Rebuild Grid
     createTournamentBanner();
     GAME_LIST.forEach(game => createGameCard(game));
     
-    // 4. Reset Audio
     audio.setTrack('lobby');
     
-    // 5. Ensure Phones are in Editor Mode
-    network.broadcastState('LOBBY');
+    // Broadcast LOBBY state + List of Games for the phone menu
+    const gameNames = GAME_LIST.map(g => ({ id: g.id, title: g.title }));
+    network.broadcastState('LOBBY', 'IDLE', { gameList: gameNames });
 
-    // 6. FORCE RESUME (The Fix)
-    // We add a tiny delay to ensure the canvas DOM elements are ready
     setTimeout(() => resumeDemos(), 50);
 }
 
@@ -206,37 +216,31 @@ function createGameCard(gameConfig) {
     });
 
     hubGrid.appendChild(card);
-    
-    // Mount Background Demo
     const p5inst = runner.mount(gameConfig.class, canvasId, 'demo');
-    p5inst.loop(); // Explicitly start loop
+    p5inst.loop();
     demoInstances.push(p5inst);
 }
 
 function enterGameMode(gameConfig) {
     currentMode = 'game';
+    currentGameState = 'PLAYING';
     audio.setTrack('game');
     gameStage.classList.remove('hidden');
-    
     pauseDemos();
 
     let screenType = 'CONTROLLER'; 
     if (gameConfig && gameConfig.id === 'avatar-match') {
         screenType = 'TOUCHPAD'; 
     }
-    network.broadcastState(screenType);
+    
+    // Broadcast PLAYING context so "Exit" is the only option initially
+    network.broadcastState(screenType, 'PLAYING');
 }
 
 function returnToHub() {
     audio.play('click');
-    
-    // Hide Stage
     gameStage.classList.add('hidden');
-    
-    // Kill Active Game Logic (Hard Reset)
     runner.mount(null, 'game-canvas-container', 'active');
-    
-    // Rebuild Menu
     renderHub();
 }
 
@@ -247,7 +251,7 @@ function resumeDemos() { demoInstances.forEach(p5inst => p5inst.loop()); }
 
 function showTournamentSetup() {
     audio.play('click');
-    network.broadcastState('LOBBY'); 
+    network.broadcastState('LOBBY', 'IDLE'); 
 
     ui.centerMessage.innerHTML = `
         <div class="message-card">
@@ -276,6 +280,35 @@ function showTournamentSetup() {
     };
 }
 
+// ... Lobby Setup / Cleanup / Render functions (unchanged from previous) ...
+// (Omitting for brevity as they are identical to the previous fixed version)
+// Just ensure you include the setupLobby, cleanupLobby, renderVisualLobby, bindLobbyInputs...
+
+function setupLobby() {
+    setupBtn.addEventListener('click', () => {
+        audio.play('click');
+        audio.setTrack('config'); 
+        network.broadcastState('LOBBY', 'IDLE');
+        renderVisualLobby();
+        setupOverlay.classList.remove('hidden');
+        pauseDemos();
+    });
+
+    savePlayersBtn.addEventListener('click', () => {
+        audio.play('click');
+        audio.setTrack('lobby');
+        setupOverlay.classList.add('hidden');
+        cleanupLobby(); 
+        renderHub();    
+    });
+
+    addPlayerBtn.addEventListener('click', () => {
+        audio.play('click');
+        players.addPlayer('local');
+        renderVisualLobby();
+    });
+}
+
 function cleanupLobby() {
     lobbyInstances.forEach(p => p.remove());
     lobbyInstances = [];
@@ -283,7 +316,6 @@ function cleanupLobby() {
 
 function renderVisualLobby() {
     cleanupLobby();
-
     const controls = document.querySelector('.lobby-controls');
     const existingSettings = document.querySelector('.lobby-settings');
     if (existingSettings) existingSettings.remove();
@@ -324,9 +356,6 @@ function renderVisualLobby() {
         const previewId = `preview-${index}`;
         const inputDisabled = p.type === 'mobile' ? 'disabled title="Edit on Phone"' : '';
         const badge = p.type === 'mobile' ? '<span style="background:#3498db; color:white; padding:2px 6px; border-radius:4px; font-size:0.7em;">MOBILE</span>' : '';
-
-        // Added REMOVE button logic for ALL players (including Mobile)
-        // Only condition is > 2 players to keep game playable
         const showRemove = activePlayers.length > 2;
 
         card.innerHTML = `
@@ -387,7 +416,6 @@ function renderVisualLobby() {
 function bindLobbyInputs() {
     const accessories = AvatarSystem.ACCESSORIES;
 
-    // ... Inputs Listeners (name, hue, var, acc) same as before ...
     document.querySelectorAll('.name-input').forEach(el => {
         el.addEventListener('input', (e) => {
             if(e.target.disabled) return;
@@ -430,11 +458,9 @@ function bindLobbyInputs() {
         });
     });
 
-    // --- REMOVE PLAYER LOGIC (UPDATED) ---
     document.querySelectorAll('.del-btn').forEach(el => {
         el.addEventListener('click', (e) => {
             audio.play('click');
-            // Remove ANY player (Local or Mobile)
             players.removePlayer(e.target.dataset.idx);
             renderVisualLobby();
         });
@@ -472,7 +498,11 @@ function getHueFromHex(hex) {
 }
 
 function setupListeners() {
-    // Already set up inside init(), this is legacy
+    backBtn.textContent = "Exit Game";
+    backBtn.addEventListener('click', returnToHub);
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && currentMode === 'game') returnToHub();
+    });
 }
 
 function attachGlobalSoundListeners() {
@@ -489,4 +519,3 @@ function attachGlobalSoundListeners() {
 }
 
 init();
-
