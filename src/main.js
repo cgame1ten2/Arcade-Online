@@ -116,6 +116,19 @@ function init() {
         }
     });
 
+    window.addEventListener('remote-command', (e) => {
+        const action = e.detail;
+        if (action === 'EXIT') {
+            returnToHub();
+        } 
+        else if (action === 'RESTART') {
+            // If in active game, restart round
+            if (currentMode === 'game' && runner.activeGame) {
+                runner.activeGame.setup();
+            }
+        }
+    });
+
     // Initial Render
     renderHub(); 
     attachGlobalSoundListeners();
@@ -476,3 +489,4 @@ function attachGlobalSoundListeners() {
 }
 
 init();
+
