@@ -9,174 +9,113 @@
     <script src="https://cdn.jsdelivr.net/npm/p5@1.9.0/lib/p5.min.js"></script>
 
     <style>
-        /* --- GLOBAL & RESET --- */
-        body { 
-            margin: 0; padding: 0; 
-            background: #2c3e50; 
-            font-family: 'Segoe UI', Roboto, sans-serif; 
-            overflow: hidden; 
-            touch-action: none;
-            user-select: none;
-            color: #333;
-        }
-        
-        .screen { 
-            display: none; width: 100vw; height: 100vh; 
-            flex-direction: column; align-items: center; justify-content: center; 
-        }
+        body { margin: 0; padding: 0; background: #2c3e50; font-family: 'Segoe UI', Roboto, sans-serif; overflow: hidden; touch-action: none; user-select: none; color: #333; }
+        .screen { display: none; width: 100vw; height: 100vh; flex-direction: column; align-items: center; justify-content: center; }
         .active { display: flex; }
 
-        /* --- UI ELEMENTS --- */
-        .menu-btn {
-            position: absolute; top: 15px; right: 15px;
-            background: rgba(255,255,255,0.2); border: none;
-            color: white; font-size: 24px; width: 40px; height: 40px;
-            border-radius: 50%; cursor: pointer; z-index: 100;
-        }
-        
-        /* --- LOGIN SCREEN --- */
+        /* LOGIN */
         #screen-login { background: #2c3e50; color: white; }
-        h1 { margin-bottom: 30px; color: #f1c40f; text-transform: uppercase; letter-spacing: 2px; }
-        input.code-input { 
-            font-size: 30px; padding: 15px; text-align: center; text-transform: uppercase; 
-            border-radius: 12px; border: none; background: rgba(255,255,255,0.1); 
-            color: white; font-weight: bold; letter-spacing: 5px; width: 200px;
-        }
-        button.action-btn { 
-            font-size: 20px; padding: 15px 30px; margin-top: 15px;
-            background: #2ecc71; border: none; color: white; 
-            border-radius: 12px; font-weight: bold; cursor: pointer;
-            box-shadow: 0 4px 0 #27ae60;
-        }
+        input.code-input { font-size: 30px; padding: 15px; text-align: center; text-transform: uppercase; border-radius: 12px; border: none; background: rgba(255,255,255,0.1); color: white; width: 200px; }
+        button.action-btn { font-size: 20px; padding: 15px 30px; margin-top: 15px; background: #2ecc71; border: none; color: white; border-radius: 12px; font-weight: bold; cursor: pointer; box-shadow: 0 4px 0 #27ae60; }
         button.action-btn:active { transform: translateY(4px); box-shadow: none; }
 
-        /* --- LOBBY SCREEN --- */
+        /* LOBBY EDITOR */
         #screen-lobby { background: #2c3e50; }
-        .player-card {
-            background: white; border-radius: 16px; padding: 20px;
-            width: 85%; max-width: 350px; display: flex; flex-direction: column; gap: 15px;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
-        }
-        .setup-preview {
-            width: 100%; height: 200px; background: #f8f9fa;
-            border-radius: 12px; display: flex; justify-content: center; align-items: center;
-        }
-        .name-input {
-            width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 8px;
-            font-size: 1.1rem; font-weight: bold; text-align: center; box-sizing: border-box;
-        }
-        .hue-slider { width: 100%; height: 8px; border-radius: 4px; background: linear-gradient(to right, #ff0000, #ffff00, #00ff00, #00ffff, #0000ff, #ff00ff, #ff0000); outline: none; margin: 10px 0; -webkit-appearance: none; }
-        .hue-slider::-webkit-slider-thumb { -webkit-appearance: none; width: 24px; height: 24px; background: white; border: 2px solid #333; border-radius: 50%; box-shadow: 0 2px 5px rgba(0,0,0,0.2); }
+        .player-card { background: white; border-radius: 16px; padding: 20px; width: 85%; max-width: 350px; display: flex; flex-direction: column; gap: 15px; }
+        .setup-preview { width: 100%; height: 180px; background: #f8f9fa; border-radius: 12px; display: flex; justify-content: center; align-items: center; }
+        .name-input { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 8px; font-size: 1.1rem; text-align: center; box-sizing: border-box; }
+        .hue-slider { width: 100%; height: 8px; border-radius: 4px; background: linear-gradient(to right, #ff0000, #ffff00, #00ff00, #00ffff, #0000ff, #ff00ff, #ff0000); outline: none; -webkit-appearance: none; }
+        .hue-slider::-webkit-slider-thumb { -webkit-appearance: none; width: 24px; height: 24px; background: white; border: 2px solid #333; border-radius: 50%; }
         .opts-row { display: flex; gap: 10px; }
         .opt-btn { flex: 1; padding: 10px; background: #eee; border: none; border-radius: 6px; font-weight: 600; }
 
-        /* --- GAME CONTROLLER --- */
+        /* GAME CONTROLLER */
         #screen-controller { background: #2c3e50; }
-        #btn-big { 
-            width: 85vw; height: 60vh; border-radius: 30px; 
-            border: 8px solid rgba(0,0,0,0.1); 
-            display: flex; align-items: center; justify-content: center; 
-            flex-direction: column; transition: transform 0.05s;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
-        }
+        #btn-big { width: 85vw; height: 60vh; border-radius: 30px; border: 8px solid rgba(0,0,0,0.1); display: flex; align-items: center; justify-content: center; flex-direction: column; transition: transform 0.05s; }
         #btn-big:active { transform: scale(0.96); }
 
-        /* --- TOUCHPAD SCREEN (SPLIT) --- */
-        #screen-touchpad { background: #2c3e50; display: none; flex-direction: column; }
-        #touch-click-zone {
-            flex: 0.35; width: 100%; background: #2ecc71;
-            display: flex; align-items: center; justify-content: center;
-            color: white; font-weight: 900; font-size: 2rem;
-            border-bottom: 4px solid #27ae60;
-            box-shadow: inset 0 -10px 20px rgba(0,0,0,0.1);
-        }
-        #touch-click-zone:active { background: #27ae60; }
-        #touch-move-zone {
-            flex: 0.65; width: 100%; background: #34495e;
-            position: relative;
-            background-image: radial-gradient(#465c71 1px, transparent 1px);
-            background-size: 20px 20px;
-        }
-        .zone-label {
-            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            opacity: 0.3; color: white; font-weight: bold; pointer-events: none;
-        }
-
-        /* --- OVERLAY MENU --- */
-        #overlay-menu {
-            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.9); z-index: 200;
-            display: flex; flex-direction: column; align-items: center; justify-content: center;
-            gap: 20px; transition: opacity 0.2s;
-        }
-        .menu-option {
-            background: white; border: none; width: 80%; padding: 20px;
-            font-size: 1.2rem; font-weight: bold; border-radius: 12px;
-        }
-        .menu-option.danger { background: #e74c3c; color: white; }
-        .hidden { display: none !important; }
-
+        /* TOUCHPAD */
+        #screen-touchpad { background: #34495e; display: none; flex-direction: column; }
+        #touch-click-zone { flex: 0.3; width: 100%; background: #e74c3c; display: flex; align-items: center; justify-content: center; color: white; font-weight: 900; font-size: 2rem; border-bottom: 4px solid #c0392b; }
+        #touch-click-zone:active { background: #c0392b; transform: translateY(2px); }
+        #touch-move-zone { flex: 0.7; width: 100%; position: relative; background-image: radial-gradient(#465c71 1px, transparent 1px); background-size: 20px 20px; }
+        
+        /* CONTEXT MENUS (Round Over / Game Over) */
+        #screen-round-over, #screen-game-over { background: rgba(0,0,0,0.9); color: white; text-align: center; }
+        .menu-title { font-size: 2rem; margin-bottom: 30px; color: #f1c40f; }
+        .menu-btn { width: 80%; padding: 20px; font-size: 1.2rem; background: white; border: none; border-radius: 12px; margin-bottom: 15px; font-weight: bold; cursor: pointer; color: #333; }
+        .menu-btn.danger { background: #e74c3c; color: white; }
     </style>
 </head>
 <body>
 
-    <button id="global-menu-btn" class="menu-btn hidden" onclick="toggleMenu()">⚙️</button>
-
-    <!-- 1. LOGIN -->
+    <!-- LOGIN -->
     <div id="screen-login" class="screen active">
-        <h1>Wonder Arcade</h1>
+        <h1 style="color:#f1c40f;">WONDER ARCADE</h1>
         <input type="text" id="room-code" class="code-input" placeholder="CODE" maxlength="4">
-        <button class="action-btn" onclick="connect()">JOIN GAME</button>
-        <p id="status" style="margin-top: 20px; color: #f1c40f; opacity: 0;">Connecting...</p>
+        <button class="action-btn" onclick="connect()">JOIN</button>
+        <p id="status" style="margin-top:20px; color:#f1c40f; opacity:0;">Connecting...</p>
     </div>
 
-    <!-- 2. LOBBY -->
+    <!-- LOBBY -->
     <div id="screen-lobby" class="screen">
         <div class="player-card">
             <div id="lobby-avatar" class="setup-preview"></div>
             <input type="text" id="p-name" class="name-input" placeholder="Name" maxlength="12" oninput="sendUpdate()">
             <input type="range" id="p-hue" class="hue-slider" min="0" max="360" oninput="updateColor(this.value)">
             <div class="opts-row">
-                <button class="opt-btn" onclick="toggleVariant()">Style ➜</button>
-                <button class="opt-btn" onclick="changeAccessory()">Accessory ➜</button>
+                <button class="opt-btn" onclick="toggleVariant()">Style</button>
+                <button class="opt-btn" onclick="changeAccessory()">Hat</button>
             </div>
         </div>
-        <div style="margin-top:15px; color:rgba(255,255,255,0.5);">Look at TV for preview</div>
+        <div style="margin-top:20px; color:white; opacity:0.6; text-align:center;">
+            Use <span style="color:#f1c40f; font-weight:bold;">TOUCHPAD</span> below<br>to select a game!
+        </div>
+        <!-- Mini Touchpad for Lobby -->
+        <div id="lobby-touchpad" style="width:100%; height:150px; background:rgba(255,255,255,0.1); margin-top:10px; border-radius:12px; display:flex; align-items:center; justify-content:center; color:rgba(255,255,255,0.3);">
+            Slide to Move Cursor<br>Tap to Click
+        </div>
     </div>
 
-    <!-- 3. BUTTON CONTROLLER -->
+    <!-- GAME CONTROLLER -->
     <div id="screen-controller" class="screen">
         <div id="btn-big">
-            <div id="btn-avatar-target" style="pointer-events: none;"></div>
+            <div id="btn-avatar-target"></div>
             <span style="pointer-events: none; margin-top: 10px; color: white; font-size: 1.5rem; opacity: 0.8;">TAP!</span>
         </div>
+        <!-- Exit Button -->
+        <button onclick="confirmExit()" style="margin-top:20px; background:none; border:1px solid rgba(255,255,255,0.3); color:rgba(255,255,255,0.5); padding:5px 10px; border-radius:5px;">Exit Game</button>
     </div>
 
-    <!-- 4. SPLIT TOUCHPAD -->
+    <!-- TOUCHPAD -->
     <div id="screen-touchpad" class="screen">
-        <div id="touch-click-zone">CLICK</div>
+        <div id="touch-click-zone">CLICK / GRAB</div>
         <div id="touch-move-zone">
-            <div class="zone-label">TRACKPAD AREA</div>
+            <div style="position:absolute; top:50%; left:50%; transform:translate(-50%, -50%); opacity:0.3; color:white;">TRACKPAD</div>
         </div>
     </div>
 
-    <!-- PAUSE MENU -->
-    <div id="overlay-menu" class="hidden">
-        <h2 style="color:white; margin-bottom:20px;">GAME MENU</h2>
-        <button class="menu-option" onclick="toggleMenu()">Resume</button>
-        <button class="menu-option" onclick="sendCmd('RESTART')">Restart Round</button>
-        <button class="menu-option danger" onclick="confirmExit()">Exit Game</button>
+    <!-- ROUND OVER -->
+    <div id="screen-round-over" class="screen">
+        <div class="menu-title">ROUND OVER</div>
+        <button class="menu-btn" onclick="sendCmd('NEXT_ROUND')">Play Next Round ➜</button>
+    </div>
+
+    <!-- GAME OVER (PODIUM) -->
+    <div id="screen-game-over" class="screen">
+        <div class="menu-title">GAME OVER</div>
+        <button class="menu-btn" onclick="confirmPlayAgain()">Play Again ↺</button>
+        <button class="menu-btn danger" onclick="confirmExit()">Back to Lobby ✖</button>
     </div>
 
     <script type="module">
         import AvatarSystem from './src/core/AvatarSystem.js';
 
         let peer, conn;
-        let player = { id: -1, color: '#e74c3c', hue: 0, name: 'Guest', accessory: 'Bear Ears', variant: 'default' };
+        let player = { id: -1, color: '#e74c3c', name: 'Guest', accessory: 'Bear Ears', variant: 'default' };
         let p5Lobby, p5Btn; 
         const accessories = AvatarSystem.ACCESSORIES;
 
-        // --- CONNECT ---
         window.connect = () => {
             const code = document.getElementById('room-code').value.toUpperCase().trim();
             if(code.length < 4) return;
@@ -197,19 +136,17 @@
                 showScreen('screen-lobby');
                 initP5Lobby();
                 document.getElementById('p-name').value = player.name;
-                document.getElementById('global-menu-btn').classList.remove('hidden');
             }
             else if (data.type === 'PING') conn.send({ type: 'PONG', ts: data.ts });
             else if (data.type === 'STATE_CHANGE') {
                 if(data.player) player = { ...player, ...data.player };
                 
+                // Show specific screens based on Host State
                 if (data.state === 'LOBBY') showScreen('screen-lobby');
-                else if (data.state === 'CONTROLLER') {
-                    showScreen('screen-controller');
-                    updateControllerVisuals();
-                    initP5Controller();
-                }
+                else if (data.state === 'CONTROLLER') { showScreen('screen-controller'); updateControllerVisuals(); initP5Controller(); }
                 else if (data.state === 'TOUCHPAD') showScreen('screen-touchpad');
+                else if (data.state === 'ROUND_OVER') showScreen('screen-round-over');
+                else if (data.state === 'GAME_OVER') showScreen('screen-game-over');
             }
         }
 
@@ -232,44 +169,49 @@
             if(conn) conn.send({ type: 'UPDATE_PROFILE', payload: { variant: player.variant } });
         }
 
-        // --- MENU LOGIC ---
-        window.toggleMenu = () => {
-            document.getElementById('overlay-menu').classList.toggle('hidden');
-        }
-        window.sendCmd = (action) => {
-            if(conn) conn.send({ type: 'COMMAND', action: action });
-            toggleMenu();
-        }
-        window.confirmExit = () => {
-            if(confirm("Exit game for everyone?")) window.sendCmd('EXIT');
-        }
+        window.sendCmd = (action) => { if(conn) conn.send({ type: 'COMMAND', action: action }); }
+        
+        window.confirmExit = () => { if(confirm("Go back to Lobby?")) window.sendCmd('EXIT'); }
+        window.confirmPlayAgain = () => { if(confirm("Replay this game?")) window.sendCmd('RESTART_GAME'); }
 
-        // --- INPUTS: BUTTON ---
+        // --- INPUTS ---
         const btn = document.getElementById('btn-big');
-        const sendInput = (action) => { if(conn) conn.send({ type: 'INPUT', action: action }); };
+        const sendInput = (action, payload) => { if(conn) conn.send({ type: 'INPUT', action: action, payload: payload }); };
         
         btn.addEventListener('touchstart', (e) => { e.preventDefault(); sendInput('PRESS'); btn.style.transform = "scale(0.96)"; });
         btn.addEventListener('touchend', (e) => { e.preventDefault(); sendInput('RELEASE'); btn.style.transform = "scale(1)"; });
-        btn.addEventListener('mousedown', () => { sendInput('PRESS'); btn.style.transform = "scale(0.96)"; });
-        btn.addEventListener('mouseup', () => { sendInput('RELEASE'); btn.style.transform = "scale(1)"; });
 
-        // --- INPUTS: TOUCHPAD SPLIT ---
-        const padMove = document.getElementById('touch-move-zone');
-        const padClick = document.getElementById('touch-click-zone');
-        let lastX=0, lastY=0;
+        // --- SHARED TOUCHPAD LOGIC (Game & Lobby) ---
+        function attachTouchpad(moveEl, clickEl) {
+            let lastX=0, lastY=0;
+            
+            // Movement
+            moveEl.addEventListener('touchstart', (e) => { lastX = e.touches[0].clientX; lastY = e.touches[0].clientY; }, {passive:false});
+            moveEl.addEventListener('touchmove', (e) => {
+                e.preventDefault();
+                const cx = e.touches[0].clientX; const cy = e.touches[0].clientY;
+                // Send Delta
+                const dx = (cx - lastX) * 2.0; // Sensitivity boost
+                const dy = (cy - lastY) * 2.0;
+                sendInput('TOUCH_MOVE', { dx, dy });
+                lastX = cx; lastY = cy;
+            }, {passive:false});
 
-        // Click Zone
-        padClick.addEventListener('touchstart', (e) => { e.preventDefault(); sendInput('PRESS'); });
-        padClick.addEventListener('touchend', (e) => { e.preventDefault(); sendInput('RELEASE'); });
-        
-        // Move Zone
-        padMove.addEventListener('touchstart', (e) => { lastX = e.touches[0].clientX; lastY = e.touches[0].clientY; }, {passive:false});
-        padMove.addEventListener('touchmove', (e) => {
-            e.preventDefault();
-            const cx = e.touches[0].clientX; const cy = e.touches[0].clientY;
-            if(conn) conn.send({ type: 'INPUT', action: 'TOUCH_MOVE', payload: { dx: cx-lastX, dy: cy-lastY } });
-            lastX = cx; lastY = cy;
-        }, {passive:false});
+            // Click (If Click Element provided)
+            if(clickEl) {
+                clickEl.addEventListener('touchstart', (e) => { e.preventDefault(); sendInput('TOUCH_CLICK', { down: true }); });
+                clickEl.addEventListener('touchend', (e) => { e.preventDefault(); sendInput('TOUCH_CLICK', { down: false }); });
+            } else {
+                // If only one element (Lobby mini-pad), tap = click
+                moveEl.addEventListener('click', () => sendInput('TOUCH_CLICK', { down: true })); // Simple tap
+            }
+        }
+
+        // Attach to Main Touchpad
+        attachTouchpad(document.getElementById('touch-move-zone'), document.getElementById('touch-click-zone'));
+        // Attach to Lobby Touchpad
+        attachTouchpad(document.getElementById('lobby-touchpad'), null);
+
 
         // --- VISUALS ---
         function showScreen(id) {
@@ -281,11 +223,11 @@
             if(p5Lobby) return;
             const sketch = (p) => {
                 let sys;
-                p.setup = () => { p.createCanvas(200, 200); sys = new AvatarSystem(p); };
+                p.setup = () => { p.createCanvas(200, 180); sys = new AvatarSystem(p); };
                 p.draw = () => {
                     p.clear(); p.translate(100, 100);
-                    // REDUCED SIZE TO FIT EARS (180 -> 130)
-                    sys.draw({ x:0, y:0, size:130, color: player.color, variant: player.variant, accessory: player.accessory, expression: 'happy' });
+                    // Adjusted Y and Size so Ears don't clip
+                    sys.draw({ x:0, y:10, size:130, color: player.color, variant: player.variant, accessory: player.accessory, expression: 'happy' });
                 };
             };
             p5Lobby = new p5(sketch, 'lobby-avatar');
@@ -299,22 +241,14 @@
                 p.setup = () => { p.createCanvas(150, 150); sys = new AvatarSystem(p); };
                 p.draw = () => {
                     p.clear(); p.translate(75, 75);
-                    // REDUCED SIZE (130 -> 100)
                     sys.draw({ x:0, y:0, size:100, color: player.color, variant: player.variant, accessory: player.accessory, expression: 'angry' });
                 };
             };
             p5Btn = new p5(sketch, 'btn-avatar-target');
         }
-
-        function updateControllerVisuals() {
-            btn.style.backgroundColor = player.color;
-        }
-
-        function hslToHex(h,s,l) {
-            l/=100; const a=s*Math.min(l,1-l)/100;
-            const f=n=>{const k=(n+h/30)%12; const c=l-a*Math.max(Math.min(k-3,9-k,1),-1); return Math.round(255*c).toString(16).padStart(2,'0');};
-            return `#${f(0)}${f(8)}${f(4)}`;
-        }
+        
+        function updateControllerVisuals() { btn.style.backgroundColor = player.color; }
+        function hslToHex(h,s,l) { l/=100; const a=s*Math.min(l,1-l)/100; const f=n=>{const k=(n+h/30)%12; const c=l-a*Math.max(Math.min(k-3,9-k,1),-1); return Math.round(255*c).toString(16).padStart(2,'0');}; return `#${f(0)}${f(8)}${f(4)}`; }
     </script>
 </body>
 </html>
