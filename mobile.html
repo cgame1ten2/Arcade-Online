@@ -149,7 +149,7 @@
         <div class="player-card">
             <div id="lobby-avatar" class="setup-preview"></div>
             
-            <input type="text" id="p-name" class="name-input" placeholder="Your Name" oninput="sendUpdate()">
+            <input type="text" id="p-name" class="name-input" placeholder="Your Name" maxlength="12" oninput="sendUpdate()">
             
             <input type="range" id="p-hue" class="hue-slider" min="0" max="360" oninput="updateColor(this.value)">
             
@@ -225,10 +225,7 @@
                 player = { ...player, ...data }; 
                 showScreen('screen-lobby'); 
                 initP5Lobby();
-                // Set initial input values
                 document.getElementById('p-name').value = player.name;
-                // Hue is approximate since we only get Hex from host, 
-                // but slider interaction will overwrite it anyway.
             }
             else if (data.type === 'PING') {
                 conn.send({ type: 'PONG', ts: data.ts });
@@ -352,8 +349,6 @@
         
         function updateControllerVisuals() {
             btn.style.backgroundColor = player.color;
-            // Darken border color relative to base
-            // (Simplified visual feedback, host uses actual hex)
         }
 
         function hslToHex(h, s, l) {
