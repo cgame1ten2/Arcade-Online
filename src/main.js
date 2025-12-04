@@ -7,26 +7,27 @@ import GameRunner from './core/GameRunner.js';
 import AudioManager from './core/AudioManager.js';
 import AvatarSystem from './core/AvatarSystem.js';
 import TournamentManager from './core/TournamentManager.js';
-import NetworkManager from './core/NetworkManager.js'; // NEW IMPORT
+import NetworkManager from './core/NetworkManager.js';
 import { GAME_LIST } from './GameRegistry.js';
 
+// --- SYSTEM INITIALIZATION ---
 const players = new PlayerManager();
 const inputs = new InputManager(players);
 const ui = new UIManager();
 const audio = new AudioManager();
 const runner = new GameRunner(players, inputs, ui, audio);
 const tournament = new TournamentManager(runner, ui, players);
-
-// NEW: Initialize Network Manager
 const network = new NetworkManager(players, inputs);
-// Connect Inputs to Network for Lag Equalization
+
+// Link Inputs to Network Lag System
 inputs.setNetworkManager(network);
 
+// --- GLOBAL STATE ---
 let currentMode = 'hub';
-let lobbyInstances = [];
-let demoInstances = [];
+let lobbyInstances = []; // P5 instances for the Player Setup screen
+let demoInstances = [];  // P5 instances for the Main Menu background cards
 
-// DOM Elements
+// --- DOM ELEMENTS ---
 const hubGrid = document.getElementById('hub-grid');
 const gameStage = document.getElementById('game-stage');
 const backBtn = document.getElementById('back-to-hub-btn');
@@ -40,6 +41,7 @@ const mainHeader = document.getElementById('main-header');
 function init() {
     console.log("🚀 Wonder Arcade Engine Started");
 
+    // Audio Start Interaction
     const startAudio = () => {
         audio.init();
         audio.setTrack('lobby');
@@ -47,54 +49,76 @@ function init() {
     };
     document.addEventListener('click', startAudio);
 
-    // --- NEW: Add Host Button ---
+    // --- HOST BUTTON SETUP ---
     const hostBtn = document.createElement('button');
     hostBtn.className = 'icon-btn';
     hostBtn.innerText = '📡 Host Game';
     hostBtn.style.marginRight = '10px';
+    
     hostBtn.onclick = () => {
         audio.play('click');
         hostBtn.innerText = 'Starting...';
-        hostBtn.disabled = true;
-
+        hostBtn.disabled = true; // Prevent double clicks
+        
         network.hostGame();
-
-        // Callback when PeerJS is ready
+        
+        // Callback when Host is Ready
         network.onHostReady = (code) => {
             hostBtn.innerText = `Room: ${code}`;
             hostBtn.style.background = '#2ecc71';
             hostBtn.style.borderColor = '#27ae60';
-            hostBtn.onclick = null; // Disable click
-
-            // Show a friendly toast/message explaining what to do
+            hostBtn.onclick = null; // Disable further clicks
+            
+            // Show instructions
             ui.showMessage(
-                `Room Code: ${code}`,
-                "Open mobile.html on your phone to join!",
-                "OK",
+                `Room Code: ${code}`, 
+                "Open mobile.html on your phone to join!", 
+                "OK", 
                 () => ui.hideMessage()
             );
         };
     };
-    // Insert before Settings button
     mainHeader.insertBefore(hostBtn, setupBtn);
 
-    // --- NEW: Listen for Network Player Updates ---
+    // --- NETWORK LISTENERS ---
     window.addEventListener('player-update', () => {
-        // If we are currently in the Settings menu, refresh the grid
+        // If settings menu is open, refresh it to show new mobile players
         if (!setupOverlay.classList.contains('hidden')) {
             renderVisualLobby();
         }
-        // If in Hub, maybe refresh other things (optional)
+        // If on Hub, we might want to refresh demos eventually, 
+        // but for now we leave them to avoid flicker.
     });
 
+    setupListeners();
+    renderHub(); // Build the initial menu
+    attachGlobalSoundListeners();
+}
+
+/**
+ * REBUILDS THE MAIN MENU
+ * Destroys old demos, clears the grid, and regenerates cards.
+ * This ensures avatars update if colors changed.
+ */
+function renderHub() {
+    // 1. Clean up existing demos to prevent memory leaks
+    demoInstances.forEach(inst => inst.remove());
+    demoInstances = [];
+    
+    // 2. Clear DOM
+    hubGrid.innerHTML = '';
+
+    // 3. Add Tournament Banner
     createTournamentBanner();
 
-    // Create Game Cards & Register Demos
+    // 4. Create Game Cards
     GAME_LIST.forEach(game => createGameCard(game));
-
-    setupListeners();
-    setupLobby();
-    attachGlobalSoundListeners();
+    
+    // 5. Ensure Audio is correct
+    if(currentMode === 'hub') audio.setTrack('lobby');
+    
+    // 6. Resume Demos (in case they were paused)
+    resumeDemos();
 }
 
 function createTournamentBanner() {
@@ -121,20 +145,80 @@ function createTournamentBanner() {
     hubGrid.appendChild(banner);
 }
 
-// --- PERFORMANCE MANAGEMENT ---
-function pauseDemos() {
-    demoInstances.forEach(p5inst => p5inst.noLoop());
+function createGameCard(gameConfig) {
+    const card = document.createElement('div');
+    card.className = 'game-card';
+    const canvasId = 'card-' + gameConfig.id;
+
+    card.innerHTML = `
+        <div class="card-canvas-wrapper" id="${canvasId}"></div>
+        <div class="card-info">
+            <h3>${gameConfig.title}</h3>
+            <p>${gameConfig.description}</p>
+        </div>
+    `;
+
+    card.addEventListener('click', () => {
+        audio.play('click');
+        enterGameMode(gameConfig);
+        // Start the Actual Game
+        runner.mount(gameConfig.class, 'game-canvas-container', 'active');
+    });
+
+    hubGrid.appendChild(card);
+    
+    // Mount Background Demo
+    const p5inst = runner.mount(gameConfig.class, canvasId, 'demo');
+    demoInstances.push(p5inst);
 }
 
-function resumeDemos() {
-    demoInstances.forEach(p5inst => p5inst.loop());
+// --- GAME STATE TRANSITIONS ---
+
+function enterGameMode(gameConfig) {
+    currentMode = 'game';
+    audio.setTrack('game');
+    gameStage.classList.remove('hidden');
+    
+    // Pause background demos to save CPU
+    pauseDemos();
+
+    // Determine Phone Screen Type
+    let screenType = 'CONTROLLER'; 
+    if (gameConfig && gameConfig.id === 'avatar-match') {
+        screenType = 'TOUCHPAD'; 
+    }
+    network.broadcastState(screenType);
 }
-// ------------------------------
+
+/**
+ * SOFT EXIT (Preserves Host Connection)
+ */
+function returnToHub() {
+    audio.play('click');
+    currentMode = 'hub';
+    
+    // 1. Hide Game Stage
+    gameStage.classList.add('hidden');
+    
+    // 2. Kill the Active Game Logic
+    // We pass null to mount to trigger cleanup of active game
+    runner.mount(null, 'game-canvas-container', 'active');
+    
+    // 3. Reset Phones to Lobby Mode
+    network.broadcastState('LOBBY');
+    
+    // 4. Refresh the Hub (Updates avatars if changed)
+    renderHub();
+}
+
+function pauseDemos() { demoInstances.forEach(p5inst => p5inst.noLoop()); }
+function resumeDemos() { demoInstances.forEach(p5inst => p5inst.loop()); }
+
+// --- LOBBY & TOURNAMENT UI ---
 
 function showTournamentSetup() {
     audio.play('click');
-    // Tell phones we are in lobby/setup mode
-    network.broadcastState('LOBBY');
+    network.broadcastState('LOBBY'); // Ensure phones are ready
 
     ui.centerMessage.innerHTML = `
         <div class="message-card">
@@ -153,8 +237,7 @@ function showTournamentSetup() {
     window.startTourney = (rounds) => {
         ui.hideMessage();
         audio.play('click');
-        // We don't enter a specific game yet, TournamentManager handles that
-        enterGameMode(null);
+        enterGameMode(null); 
         tournament.startTournament(rounds);
     };
 
@@ -164,86 +247,31 @@ function showTournamentSetup() {
     };
 }
 
-function createGameCard(gameConfig) {
-    const card = document.createElement('div');
-    card.className = 'game-card';
-    const canvasId = 'card-' + gameConfig.id;
-
-    card.innerHTML = `
-        <div class="card-canvas-wrapper" id="${canvasId}"></div>
-        <div class="card-info">
-            <h3>${gameConfig.title}</h3>
-            <p>${gameConfig.description}</p>
-        </div>
-    `;
-
-    card.addEventListener('click', () => {
-        audio.play('click');
-        enterGameMode(gameConfig);
-        // Standard Arcade Mode
-        runner.mount(gameConfig.class, 'game-canvas-container', 'active');
-    });
-
-    hubGrid.appendChild(card);
-
-    // Mount Demo and Store Instance
-    const p5inst = runner.mount(gameConfig.class, canvasId, 'demo');
-    demoInstances.push(p5inst);
-}
-
-/**
- * Transition to Game View
- * @param {object} gameConfig - Optional config to determine phone screen type
- */
-function enterGameMode(gameConfig) {
-    currentMode = 'game';
-    audio.setTrack('game');
-    gameStage.classList.remove('hidden');
-    pauseDemos();
-
-    // Determine Phone Screen Type
-    let screenType = 'CONTROLLER'; // Default Big Button
-
-    if (gameConfig && gameConfig.id === 'avatar-match') {
-        screenType = 'TOUCHPAD'; // Mouse/Touch based game
-    }
-
-    network.broadcastState(screenType);
-}
-
-function returnToHub() {
-    audio.play('click');
-
-    // Tell phones to go back to Lobby Editor
-    network.broadcastState('LOBBY');
-
-    location.reload();
-}
-
 function setupLobby() {
+    // OPEN SETTINGS
     setupBtn.addEventListener('click', () => {
         audio.play('click');
-        audio.setTrack('config');
-
-        // Phones should stay in Lobby mode (default), but broadcasting ensures sync
+        audio.setTrack('config'); 
         network.broadcastState('LOBBY');
-
+        
         renderVisualLobby();
         setupOverlay.classList.remove('hidden');
         pauseDemos();
     });
 
+    // CLOSE SETTINGS (SAVE & EXIT)
     savePlayersBtn.addEventListener('click', () => {
         audio.play('click');
         audio.setTrack('lobby');
         setupOverlay.classList.add('hidden');
-        cleanupLobby();
-        location.reload();
+        
+        cleanupLobby(); // Clean up P5 instances in the settings menu
+        renderHub();    // Rebuild main menu to show new player colors
     });
 
     addPlayerBtn.addEventListener('click', () => {
         audio.play('click');
-        players.addPlayer('local'); // Explicitly add local player via button
+        players.addPlayer('local');
         renderVisualLobby();
     });
 }
@@ -260,6 +288,7 @@ function renderVisualLobby() {
     const existingSettings = document.querySelector('.lobby-settings');
     if (existingSettings) existingSettings.remove();
 
+    // Add Audio Toggles
     const settingsDiv = document.createElement('div');
     settingsDiv.className = 'lobby-settings';
     settingsDiv.innerHTML = `
@@ -285,17 +314,15 @@ function renderVisualLobby() {
         audio.play('click');
     };
 
+    // Render Cards
     playerConfigGrid.innerHTML = '';
     const activePlayers = players.getActivePlayers();
 
     activePlayers.forEach((p, index) => {
         const card = document.createElement('div');
         card.className = 'player-setup-card';
-        // Add visual distinction for Mobile players
-        if (p.type === 'mobile') {
-            card.style.border = "3px solid #3498db";
-        }
-
+        if(p.type === 'mobile') card.style.border = "3px solid #3498db";
+        
         const previewId = `preview-${index}`;
         const inputDisabled = p.type === 'mobile' ? 'disabled title="Edit on Phone"' : '';
         const badge = p.type === 'mobile' ? '<span style="background:#3498db; color:white; padding:2px 6px; border-radius:4px; font-size:0.7em;">MOBILE</span>' : '';
@@ -319,15 +346,12 @@ function renderVisualLobby() {
 
         playerConfigGrid.appendChild(card);
 
-        // P5 Instance for Avatar Preview
         const sketch = (sketchP) => {
             const avatars = new AvatarSystem(sketchP);
             let expression = 'idle';
             let nextBlink = 0;
 
-            sketchP.setup = () => {
-                sketchP.createCanvas(200, 200);
-            };
+            sketchP.setup = () => { sketchP.createCanvas(200, 200); };
             sketchP.draw = () => {
                 sketchP.clear();
                 sketchP.push();
@@ -337,13 +361,12 @@ function renderVisualLobby() {
                 sketchP.scale(1 + breath, 1 - breath);
 
                 if (t > nextBlink) {
-                    const exps = ['idle', 'happy', 'stunned'];
-                    expression = sketchP.random(exps);
+                    expression = sketchP.random(['idle', 'happy', 'stunned']);
                     nextBlink = t + sketchP.random(2000, 5000);
                     setTimeout(() => expression = 'idle', 1000);
                 }
 
-                // IMPORTANT: Fetch latest player data every frame to catch updates from phone
+                // IMPORTANT: Fetch latest data to support Mobile updates
                 const currP = players.getPlayer(index);
                 if (currP) {
                     avatars.draw({
@@ -365,14 +388,14 @@ function bindLobbyInputs() {
 
     document.querySelectorAll('.name-input').forEach(el => {
         el.addEventListener('input', (e) => {
-            if (e.target.disabled) return;
+            if(e.target.disabled) return;
             players.updatePlayer(e.target.dataset.idx, { name: e.target.value });
         });
     });
 
     document.querySelectorAll('.hue-slider').forEach(el => {
         el.addEventListener('input', (e) => {
-            if (e.target.disabled) return;
+            if(e.target.disabled) return;
             const hue = e.target.value;
             const color = hslToHex(hue, 85, 60);
             players.updatePlayer(e.target.dataset.idx, { color: color });
@@ -381,7 +404,7 @@ function bindLobbyInputs() {
 
     document.querySelectorAll('.var-btn').forEach(el => {
         el.addEventListener('click', (e) => {
-            if (e.target.disabled) return;
+            if(e.target.disabled) return;
             const idx = e.target.dataset.idx;
             const p = players.getPlayer(idx);
             const newVar = p.variant === 'default' ? 'feminine' : 'default';
@@ -393,7 +416,7 @@ function bindLobbyInputs() {
 
     document.querySelectorAll('.acc-btn').forEach(el => {
         el.addEventListener('click', (e) => {
-            if (e.target.disabled) return;
+            if(e.target.disabled) return;
             const idx = e.target.dataset.idx;
             const p = players.getPlayer(idx);
             let currIdx = accessories.indexOf(p.accessory);
@@ -414,7 +437,6 @@ function bindLobbyInputs() {
     });
 }
 
-// ... HSL Helper Functions remain unchanged ...
 function hslToHex(h, s, l) {
     l /= 100; const a = s * Math.min(l, 1 - l) / 100;
     const f = n => {
