@@ -4,136 +4,212 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Wonder Controller</title>
+    
     <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/p5@1.9.0/lib/p5.min.js"></script>
+
     <style>
-        body { margin: 0; padding: 0; background: #2c3e50; font-family: 'Segoe UI', Roboto, sans-serif; overflow: hidden; touch-action: none; user-select: none; color: #333; height: 100vh; width: 100vw; }
-        .screen { display: none; width: 100%; height: 100%; flex-direction: column; align-items: center; justify-content: center; position: absolute; top: 0; left: 0; }
-        .active { display: flex; }
-        .menu-btn { position: absolute; top: 15px; right: 15px; background: rgba(255,255,255,0.2); border: none; color: white; font-size: 24px; width: 40px; height: 40px; border-radius: 50%; cursor: pointer; z-index: 100; }
-        
-        #screen-login { background: #2c3e50; color: white; }
-        input.code-input { font-size: 30px; padding: 15px; text-align: center; text-transform: uppercase; border-radius: 12px; border: none; background: rgba(255,255,255,0.1); color: white; font-weight: bold; width: 200px; }
-        button.action-btn { font-size: 20px; padding: 15px 30px; margin-top: 15px; background: #2ecc71; border: none; color: white; border-radius: 12px; font-weight: bold; cursor: pointer; box-shadow: 0 4px 0 #27ae60; }
-        
-        #screen-lobby { background: #2c3e50; }
-        .player-card { background: white; border-radius: 16px; padding: 20px; width: 85%; max-width: 350px; display: flex; flex-direction: column; gap: 15px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3); }
-        .setup-preview { width: 100%; height: 200px; background: #f8f9fa; border-radius: 12px; display: flex; justify-content: center; align-items: center; }
-        .name-input { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 8px; font-size: 1.1rem; font-weight: bold; text-align: center; box-sizing: border-box; }
-        .hue-slider { width: 100%; height: 8px; border-radius: 4px; background: linear-gradient(to right, #ff0000, #ffff00, #00ff00, #00ffff, #0000ff, #ff00ff, #ff0000); outline: none; margin: 10px 0; -webkit-appearance: none; }
-        .hue-slider::-webkit-slider-thumb { -webkit-appearance: none; width: 24px; height: 24px; background: white; border: 2px solid #333; border-radius: 50%; }
-        .opts-row { display: flex; gap: 10px; }
-        .opt-btn { flex: 1; padding: 10px; background: #eee; border: none; border-radius: 6px; font-weight: 600; }
-        
-        #screen-controller { background: #2c3e50; }
-        #btn-big { width: 85vw; height: 60vh; border-radius: 30px; border: 8px solid rgba(0,0,0,0.1); display: flex; align-items: center; justify-content: center; flex-direction: column; transition: transform 0.05s; box-shadow: 0 10px 30px rgba(0,0,0,0.3); }
-        #btn-big:active { transform: scale(0.96); }
-        
-        /* --- KEYPAD STYLES --- */
-        #screen-touchpad { background: #2c3e50; display: none; height: 100%; width: 100%; flex-direction: column; }
-        #touch-click-zone { height: 30%; width: 100%; background: #2ecc71; display: flex; align-items: center; justify-content: center; color: white; font-weight: 900; font-size: 2rem; border-bottom: 4px solid #27ae60; flex-shrink: 0; }
-        #touch-click-zone:active { background: #27ae60; }
-        
-        #touch-move-zone { 
-            height: 70%; width: 100%; background: #34495e; 
-            display: flex; justify-content: center; align-items: center; flex-grow: 1; 
+        /* --- GLOBAL RESET --- */
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        body { 
+            margin: 0; padding: 0; 
+            background: #2c3e50; 
+            font-family: sans-serif; 
+            overflow: hidden; 
+            touch-action: none; 
+            user-select: none; 
+            color: white; 
+            width: 100vw; height: 100vh;
+            position: fixed; /* Lock body */
         }
         
-        #dpad-grid {
-            display: grid;
-            grid-template-columns: 80px 80px 80px;
-            grid-template-rows: 80px 80px 80px;
+        /* --- SCREEN MANAGER --- */
+        .screen { 
+            display: none; 
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            flex-direction: column; align-items: center; justify-content: center; 
+            background: #2c3e50;
+            z-index: 10;
+        }
+        .active { display: flex !important; }
+
+        /* --- UI ELEMENTS --- */
+        .menu-btn {
+            position: fixed; top: 15px; right: 15px;
+            background: rgba(255,255,255,0.2); border: 2px solid rgba(255,255,255,0.3);
+            color: white; font-size: 24px; width: 44px; height: 44px;
+            border-radius: 50%; cursor: pointer; z-index: 999;
+            display: flex; align-items: center; justify-content: center;
+        }
+
+        /* --- LOGIN SCREEN --- */
+        input.code-input { font-size: 30px; padding: 15px; text-align: center; text-transform: uppercase; border-radius: 12px; border: none; background: rgba(255,255,255,0.1); color: white; font-weight: bold; width: 220px; display: block; margin-bottom: 20px; }
+        button.action-btn { font-size: 20px; padding: 15px 30px; background: #2ecc71; border: none; color: white; border-radius: 12px; font-weight: bold; width: 220px; }
+        
+        /* --- LOBBY SCREEN --- */
+        .player-card { background: white; border-radius: 16px; padding: 20px; width: 90%; max-width: 350px; display: flex; flex-direction: column; gap: 15px; color: #333; }
+        .setup-preview { width: 100%; height: 200px; background: #eee; border-radius: 12px; display: flex; justify-content: center; align-items: center; }
+        .name-input { width: 100%; padding: 10px; font-size: 1.2rem; text-align: center; border: 1px solid #ccc; border-radius: 8px; }
+        .opts-row { display: flex; gap: 10px; }
+        .opt-btn { flex: 1; padding: 12px; background: #eee; border: none; border-radius: 8px; font-weight: bold; color: #333; }
+        
+        /* --- CONTROLLER (ONE BUTTON) --- */
+        #btn-big { 
+            width: 85vw; height: 60vh; 
+            background: #e74c3c; /* Default fallback color */
+            border-radius: 30px; border: 8px solid rgba(0,0,0,0.1); 
+            display: flex; align-items: center; justify-content: center; 
+            flex-direction: column; transition: transform 0.05s; 
+        }
+        #btn-big:active { transform: scale(0.96); }
+
+        /* --- TOUCHPAD (D-PAD MODE) --- */
+        /* Note: Using flex-basis/grow guarantees visibility vs percentage heights */
+        #screen-touchpad { background: #34495e; }
+        
+        /* Top Click Area */
+        #touch-click-zone {
+            flex-basis: 35%; /* Take up top 35% */
+            width: 100%;
+            background: #27ae60;
+            border-bottom: 4px solid rgba(0,0,0,0.2);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 2rem; font-weight: 900; letter-spacing: 2px;
+            box-shadow: inset 0 -10px 20px rgba(0,0,0,0.1);
+        }
+        #touch-click-zone:active { background: #2ecc71; }
+
+        /* Bottom Move Area */
+        #touch-move-zone {
+            flex-basis: 65%; /* Take up bottom 65% */
+            width: 100%;
+            background: #2c3e50;
+            display: flex; align-items: center; justify-content: center;
+            position: relative;
+        }
+
+        /* The D-Pad Container */
+        .dpad-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+            transform: scale(1.2); /* Make it big */
+        }
+
+        .dpad-row {
+            display: flex;
             gap: 10px;
         }
-        
+
         .dpad-btn {
-            background: rgba(255,255,255,0.1);
-            border: 2px solid rgba(255,255,255,0.1);
+            width: 80px; height: 80px;
+            background: #ecf0f1;
             border-radius: 12px;
-            display: flex; justify-content: center; align-items: center;
-            font-size: 40px; color: white;
-            user-select: none;
-            transition: background 0.1s;
+            border: 4px solid #bdc3c7;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 30px; color: #2c3e50;
+            font-weight: bold;
+            box-shadow: 0 6px 0 #95a5a6;
+            transition: transform 0.05s, box-shadow 0.05s;
         }
-        .dpad-btn.active { background: rgba(255,255,255,0.5); border-color: white; box-shadow: 0 0 15px white; }
-        
-        /* Icons */
-        .icon-up::before { content: '▲'; }
-        .icon-down::before { content: '▼'; }
-        .icon-left::before { content: '◀'; }
-        .icon-right::before { content: '▶'; }
-        
-        #overlay-menu { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); z-index: 200; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 15px; transition: opacity 0.2s; }
-        .menu-option { background: white; border: none; width: 80%; padding: 20px; font-size: 1.2rem; font-weight: bold; border-radius: 12px; }
+
+        .dpad-btn:active {
+            transform: translateY(6px);
+            box-shadow: 0 0 0 #95a5a6;
+            background: #bdc3c7;
+        }
+
+        /* Spacer for the cross shape */
+        .spacer { width: 80px; height: 80px; }
+
+        /* --- MENU OVERLAY --- */
+        #overlay-menu { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); z-index: 2000; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 15px; }
+        .menu-option { background: white; border: none; width: 80%; padding: 20px; font-size: 1.2rem; font-weight: bold; border-radius: 12px; color: #333; }
         .menu-option.danger { background: #e74c3c; color: white; }
-        .menu-option.primary { background: #f1c40f; color: #333; }
-        .menu-header { color: white; font-size: 1.5rem; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 2px; }
+        .menu-option.primary { background: #f1c40f; }
         select.game-select { width: 80%; padding: 15px; font-size: 1.1rem; border-radius: 12px; margin-bottom: 15px; border: none; font-weight: bold; }
         .hidden { display: none !important; }
+
     </style>
 </head>
 <body>
+
+    <!-- SETTINGS BUTTON (Always on top) -->
     <button id="global-menu-btn" class="menu-btn hidden" onclick="toggleMenu()">⚙️</button>
 
-    <!-- LOGIN -->
+    <!-- 1. LOGIN -->
     <div id="screen-login" class="screen active">
-        <h1>Wonder Arcade</h1>
+        <h1 style="color:#f1c40f; margin-bottom:30px;">WONDER<br>ARCADE</h1>
         <input type="text" id="room-code" class="code-input" placeholder="CODE" maxlength="4">
         <button class="action-btn" onclick="connect()">JOIN GAME</button>
         <p id="status" style="margin-top: 20px; color: #f1c40f; opacity: 0;">Connecting...</p>
     </div>
 
-    <!-- LOBBY -->
+    <!-- 2. LOBBY -->
     <div id="screen-lobby" class="screen">
         <div class="player-card">
             <div id="lobby-avatar" class="setup-preview"></div>
             <input type="text" id="p-name" class="name-input" placeholder="Name" maxlength="12" oninput="sendUpdate()">
-            <input type="range" id="p-hue" class="hue-slider" min="0" max="360" oninput="updateColor(this.value)">
+            <input type="range" id="p-hue" style="width:100%; margin:15px 0;" min="0" max="360" oninput="updateColor(this.value)">
             <div class="opts-row">
-                <button class="opt-btn" onclick="toggleVariant()">Style ➜</button>
-                <button class="opt-btn" onclick="changeAccessory()">Accessory ➜</button>
+                <button class="opt-btn" onclick="toggleVariant()">Style</button>
+                <button class="opt-btn" onclick="changeAccessory()">Accessory</button>
             </div>
         </div>
-        <div style="margin-top:15px; color:rgba(255,255,255,0.5);">Look at TV for preview</div>
+        <div style="margin-top:15px; opacity:0.5;">Look at TV for preview</div>
     </div>
 
-    <!-- BUTTON -->
+    <!-- 3. BUTTON CONTROLLER -->
     <div id="screen-controller" class="screen">
         <div id="btn-big">
             <div id="btn-avatar-target" style="pointer-events: none;"></div>
-            <span style="pointer-events: none; margin-top: 10px; color: white; font-size: 1.5rem; opacity: 0.8;">TAP!</span>
+            <span style="pointer-events: none; margin-top: 10px; color: white; font-size: 2rem; font-weight:900; opacity: 0.9;">TAP!</span>
         </div>
     </div>
 
-    <!-- D-PAD / KEYPAD -->
+    <!-- 4. D-PAD CONTROLLER (The Fix) -->
     <div id="screen-touchpad" class="screen">
+        
+        <!-- Top: Click -->
         <div id="touch-click-zone">TAP TO CLICK</div>
+        
+        <!-- Bottom: Movement -->
         <div id="touch-move-zone">
-            <div id="dpad-grid">
-                <div></div>
-                <div id="btn-up" class="dpad-btn icon-up"></div>
-                <div></div>
-                
-                <div id="btn-left" class="dpad-btn icon-left"></div>
-                <div style="display:flex; justify-content:center; align-items:center; color:rgba(255,255,255,0.3); font-weight:bold;">MOVE</div>
-                <div id="btn-right" class="dpad-btn icon-right"></div>
-                
-                <div></div>
-                <div id="btn-down" class="dpad-btn icon-down"></div>
-                <div></div>
+            <div class="dpad-container">
+                <!-- Row 1 -->
+                <div class="dpad-row">
+                    <div class="spacer"></div>
+                    <div id="btn-up" class="dpad-btn">▲</div>
+                    <div class="spacer"></div>
+                </div>
+                <!-- Row 2 -->
+                <div class="dpad-row">
+                    <div id="btn-left" class="dpad-btn">◀</div>
+                    <div class="spacer" style="display:flex; justify-content:center; align-items:center; opacity:0.3; color:white; font-weight:bold;">MOVE</div>
+                    <div id="btn-right" class="dpad-btn">▶</div>
+                </div>
+                <!-- Row 3 -->
+                <div class="dpad-row">
+                    <div class="spacer"></div>
+                    <div id="btn-down" class="dpad-btn">▼</div>
+                    <div class="spacer"></div>
+                </div>
             </div>
         </div>
     </div>
 
-    <!-- MENU -->
+    <!-- MENU OVERLAY -->
     <div id="overlay-menu" class="hidden">
-        <div class="menu-header">GAME MENU</div>
+        <h2 style="color:white; margin-bottom:20px;">GAME MENU</h2>
+        
         <div id="game-selector-container" class="hidden" style="width:100%; display:flex; flex-direction:column; align-items:center;">
             <select id="game-list" class="game-select">
-                <option value="" disabled selected>Select a Game...</option>
+                <option value="" disabled selected>Select Game...</option>
             </select>
             <button class="menu-option primary" onclick="startGameFromMenu()">Start Game</button>
         </div>
+
         <button id="btn-next-round" class="menu-option primary hidden" onclick="sendCmd('NEXT_ROUND')">Start Next Round</button>
         <button id="btn-play-again" class="menu-option primary hidden" onclick="confirmPlayAgain()">Play Again</button>
         <button id="btn-resume" class="menu-option" onclick="toggleMenu()">Resume</button>
@@ -149,11 +225,9 @@
         let currentContext = 'IDLE'; 
         const accessories = AvatarSystem.ACCESSORIES;
         
+        // Session ID
         let myUUID = localStorage.getItem('wa_uuid');
-        if (!myUUID) {
-            myUUID = 'user-' + Math.random().toString(36).substr(2, 9);
-            localStorage.setItem('wa_uuid', myUUID);
-        }
+        if (!myUUID) { myUUID = 'user-' + Math.random().toString(36).substr(2, 9); localStorage.setItem('wa_uuid', myUUID); }
 
         window.connect = () => {
             const code = document.getElementById('room-code').value.toUpperCase().trim();
@@ -165,6 +239,7 @@
                 conn.on('open', () => { document.getElementById('status').innerText = "Authenticating..."; });
                 conn.on('data', handleData);
                 conn.on('close', () => { alert("Host Disconnected"); location.reload(); });
+                setTimeout(() => { if(!conn.open) { document.getElementById('status').innerText = "Room not found."; } }, 5000);
             });
         };
 
@@ -184,7 +259,7 @@
                 
                 if(data.gameList) {
                     const sel = document.getElementById('game-list');
-                    sel.innerHTML = '<option value="" disabled selected>Select a Game...</option>';
+                    sel.innerHTML = '<option value="" disabled selected>Select Game...</option>';
                     data.gameList.forEach(g => {
                         const opt = document.createElement('option');
                         opt.value = g.id; opt.innerText = g.title;
@@ -231,19 +306,19 @@
         window.confirmPlayAgain = () => { if(confirm("Restart game?")) window.sendCmd('PLAY_AGAIN'); }
         window.startGameFromMenu = () => { const gameId = document.getElementById('game-list').value; if(gameId) window.sendCmd('SELECT_GAME', gameId); }
 
-        const btn = document.getElementById('btn-big');
         const sendInput = (action, payload=null) => { if(conn) conn.send({ type: 'INPUT', action: action, payload: payload }); };
-        
+
+        // --- BUTTON LOGIC ---
+        const btn = document.getElementById('btn-big');
         btn.addEventListener('touchstart', (e) => { e.preventDefault(); sendInput('PRESS'); btn.style.transform = "scale(0.96)"; });
         btn.addEventListener('touchend', (e) => { e.preventDefault(); sendInput('RELEASE'); btn.style.transform = "scale(1)"; });
-        btn.addEventListener('mousedown', () => { sendInput('PRESS'); btn.style.transform = "scale(0.96)"; });
-        btn.addEventListener('mouseup', () => { sendInput('RELEASE'); btn.style.transform = "scale(1)"; });
-
-        // --- KEYPAD / D-PAD LOGIC ---
+        
+        // --- CLICK ZONE LOGIC ---
         const clickZone = document.getElementById('touch-click-zone');
         clickZone.addEventListener('touchstart', (e) => { e.preventDefault(); sendInput('PRESS'); });
         clickZone.addEventListener('touchend', (e) => { e.preventDefault(); sendInput('RELEASE'); });
 
+        // --- D-PAD LOGIC ---
         const dpadState = { up: false, down: false, left: false, right: false };
 
         function updateVector() {
@@ -252,35 +327,48 @@
             if (dpadState.right) x += 1;
             if (dpadState.up) y -= 1;
             if (dpadState.down) y += 1;
-            
-            // Normalize diagonals (optional but makes movement smoother)
-            if (x !== 0 && y !== 0) {
-                x *= 0.707; y *= 0.707;
-            }
+            // Send normalized vector (prevents fast diagonals)
+            if(x!==0 && y!==0) { x *= 0.707; y *= 0.707; }
             sendInput('VECTOR', { x, y });
         }
 
-        function bindDpadBtn(id, dir) {
+        function bindDpad(id, dir) {
             const el = document.getElementById(id);
-            const start = (e) => { e.preventDefault(); dpadState[dir] = true; el.classList.add('active'); updateVector(); };
-            const end = (e) => { e.preventDefault(); dpadState[dir] = false; el.classList.remove('active'); updateVector(); };
-            
+            const start = (e) => { e.preventDefault(); dpadState[dir] = true; updateVector(); };
+            const end = (e) => { e.preventDefault(); dpadState[dir] = false; updateVector(); };
             el.addEventListener('touchstart', start);
             el.addEventListener('touchend', end);
             el.addEventListener('mousedown', start);
             el.addEventListener('mouseup', end);
-            el.addEventListener('mouseleave', end); // Safety if drag out
+            el.addEventListener('mouseleave', end);
         }
 
-        bindDpadBtn('btn-up', 'up');
-        bindDpadBtn('btn-down', 'down');
-        bindDpadBtn('btn-left', 'left');
-        bindDpadBtn('btn-right', 'right');
+        bindDpad('btn-up', 'up');
+        bindDpad('btn-down', 'down');
+        bindDpad('btn-left', 'left');
+        bindDpad('btn-right', 'right');
 
-        // --- VISUALS ---
         function showScreen(id) { document.querySelectorAll('.screen').forEach(s => s.classList.remove('active')); document.getElementById(id).classList.add('active'); }
-        function initP5Lobby() { if(p5Lobby) return; const sketch = (p) => { let sys; p.setup = () => { p.createCanvas(200, 200); sys = new AvatarSystem(p); }; p.draw = () => { p.clear(); p.translate(100, 100); sys.draw({ x:0, y:0, size:130, color: player.color, variant: player.variant, accessory: player.accessory, expression: 'happy' }); }; }; p5Lobby = new p5(sketch, 'lobby-avatar'); }
-        function initP5Controller() { if(p5Btn) p5Btn.remove(); document.getElementById('btn-avatar-target').innerHTML = ''; const sketch = (p) => { let sys; p.setup = () => { p.createCanvas(150, 150); sys = new AvatarSystem(p); }; p.draw = () => { p.clear(); p.translate(75, 75); sys.draw({ x:0, y:0, size:100, color: player.color, variant: player.variant, accessory: player.accessory, expression: 'angry' }); }; }; p5Btn = new p5(sketch, 'btn-avatar-target'); }
+        
+        function initP5Lobby() { 
+            if(p5Lobby) return; 
+            const sketch = (p) => { 
+                let sys; p.setup = () => { p.createCanvas(200, 200); sys = new AvatarSystem(p); }; 
+                p.draw = () => { p.clear(); p.translate(100, 100); sys.draw({ x:0, y:0, size:130, color: player.color, variant: player.variant, accessory: player.accessory, expression: 'happy' }); }; 
+            }; 
+            p5Lobby = new p5(sketch, 'lobby-avatar'); 
+        }
+        
+        function initP5Controller() { 
+            if(p5Btn) p5Btn.remove(); 
+            document.getElementById('btn-avatar-target').innerHTML = ''; 
+            const sketch = (p) => { 
+                let sys; p.setup = () => { p.createCanvas(150, 150); sys = new AvatarSystem(p); }; 
+                p.draw = () => { p.clear(); p.translate(75, 75); sys.draw({ x:0, y:0, size:100, color: player.color, variant: player.variant, accessory: player.accessory, expression: 'angry' }); }; 
+            }; 
+            p5Btn = new p5(sketch, 'btn-avatar-target'); 
+        }
+        
         function updateControllerVisuals() { btn.style.backgroundColor = player.color; }
         function hslToHex(h,s,l) { l/=100; const a=s*Math.min(l,1-l)/100; const f=n=>{const k=(n+h/30)%12; const c=l-a*Math.max(Math.min(k-3,9-k,1),-1); return Math.round(255*c).toString(16).padStart(2,'0');}; return `#${f(0)}${f(8)}${f(4)}`; }
     </script>
