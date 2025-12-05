@@ -77,12 +77,11 @@ function init() {
         pauseDemos();
     };
 
+    // Save & Exit (Button 1)
     savePlayersBtn.onclick = () => {
         audio.play('click');
-        audio.setTrack('lobby');
-        setupOverlay.classList.add('hidden');
-        cleanupLobby(); 
-        renderHub();    
+        closeSettings();
+        location.reload(); // Legacy behavior: safer to reload on full save to reset all states
     };
 
     addPlayerBtn.onclick = () => {
@@ -104,16 +103,15 @@ function init() {
     window.addEventListener('remote-command', (e) => {
         const cmd = e.detail; 
         if (cmd.action === 'EXIT') returnToHub();
-        
         else if (cmd.action === 'NEXT_ROUND') {
             if (currentMode === 'game' && runner.activeGame) {
-                ui.hideMessage(); // --- FIX: Clear the "Winner" popup
+                ui.hideMessage(); 
                 runner.activeGame.startNewRound();
             }
         }
         else if (cmd.action === 'PLAY_AGAIN') {
             if (currentMode === 'game' && runner.activeGame) {
-                ui.hideMessage(); // --- FIX: Clear the "Podium" popup
+                ui.hideMessage(); 
                 runner.activeGame.setup(); 
             }
         }
@@ -135,6 +133,23 @@ function init() {
 
     renderHub(); 
     attachGlobalSoundListeners();
+}
+
+function closeSettings() {
+    setupOverlay.classList.add('hidden');
+    cleanupLobby(); 
+    
+    // Determine audio based on where we are returning to
+    if (currentMode === 'game') {
+        audio.setTrack('game');
+        // Restore Phone state to Game Controller
+        network.broadcastState(currentScreenType, currentGameState);
+    } else {
+        audio.setTrack('lobby');
+        // Restore Phone state to Lobby Editor
+        network.broadcastState('LOBBY', 'IDLE');
+        renderHub();
+    }
 }
 
 function renderHub() {
@@ -244,9 +259,7 @@ function showTournamentSetup() {
 }
 
 function setupLobby() {
-    setupBtn.onclick = () => { audio.play('click'); audio.setTrack('config'); network.broadcastState('LOBBY', 'IDLE'); renderVisualLobby(); setupOverlay.classList.remove('hidden'); pauseDemos(); };
-    savePlayersBtn.onclick = () => { audio.play('click'); audio.setTrack('lobby'); setupOverlay.classList.add('hidden'); cleanupLobby(); renderHub(); };
-    addPlayerBtn.onclick = () => { audio.play('click'); players.addPlayer('local'); renderVisualLobby(); };
+    // Only listener attachment here, no logic duplication
 }
 
 function cleanupLobby() { lobbyInstances.forEach(p => p.remove()); lobbyInstances = []; }
@@ -254,6 +267,19 @@ function cleanupLobby() { lobbyInstances.forEach(p => p.remove()); lobbyInstance
 function renderVisualLobby() {
     cleanupLobby();
     const controls = document.querySelector('.lobby-controls');
+    
+    // --- NEW: CLOSE BUTTON ---
+    const existingClose = document.getElementById('lobby-close-btn');
+    if (!existingClose) {
+        const closeBtn = document.createElement('button');
+        closeBtn.id = 'lobby-close-btn';
+        closeBtn.innerText = '❌';
+        closeBtn.className = 'icon-btn';
+        closeBtn.style.marginLeft = 'auto'; // Push to right
+        closeBtn.onclick = () => { audio.play('click'); closeSettings(); };
+        document.querySelector('.lobby-header').appendChild(closeBtn);
+    }
+
     const existingSettings = document.querySelector('.lobby-settings');
     if (existingSettings) existingSettings.remove();
     const settingsDiv = document.createElement('div');
