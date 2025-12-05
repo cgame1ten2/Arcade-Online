@@ -29,9 +29,12 @@
         #btn-big { width: 85vw; height: 60vh; border-radius: 30px; border: 8px solid rgba(0,0,0,0.1); display: flex; align-items: center; justify-content: center; flex-direction: column; transition: transform 0.05s; box-shadow: 0 10px 30px rgba(0,0,0,0.3); }
         #btn-big:active { transform: scale(0.96); }
         
-        /* IMAGE MIRROR */
-        #screen-touchpad { background: #000; width:100vw; height:100vh; display:none; }
-        #game-mirror { width: 100%; height: 100%; object-fit: contain; pointer-events: auto; }
+        /* TOUCHPAD SPLIT */
+        #screen-touchpad { background: #2c3e50; display: none; height: 100vh; flex-direction: column; }
+        #touch-click-zone { height: 30vh; width: 100%; background: #2ecc71; display: flex; align-items: center; justify-content: center; color: white; font-weight: 900; font-size: 2rem; border-bottom: 4px solid #27ae60; }
+        #touch-move-zone { height: 70vh; width: 100%; background: #34495e; position: relative; background-image: radial-gradient(#465c71 1px, transparent 1px); background-size: 20px 20px; overflow: hidden; }
+        #joystick-base { position: absolute; width: 120px; height: 120px; background: rgba(0,0,0,0.3); border-radius: 50%; top: 50%; left: 50%; transform: translate(-50%, -50%); pointer-events: none; border: 2px solid rgba(255,255,255,0.1); display: none; }
+        #joystick-knob { position: absolute; width: 60px; height: 60px; background: rgba(255,255,255,0.8); border-radius: 50%; top: 50%; left: 50%; transform: translate(-50%, -50%); pointer-events: none; box-shadow: 0 4px 10px rgba(0,0,0,0.3); display: none; }
         
         #overlay-menu { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 200; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 15px; transition: opacity 0.2s; }
         .menu-option { background: white; border: none; width: 80%; padding: 20px; font-size: 1.2rem; font-weight: bold; border-radius: 12px; }
@@ -75,18 +78,27 @@
         </div>
     </div>
 
-    <!-- MIRROR -->
+    <!-- JOYSTICK -->
     <div id="screen-touchpad" class="screen">
-        <img id="game-mirror" src="">
+        <div id="touch-click-zone">TAP TO CLICK</div>
+        <div id="touch-move-zone">
+            <div style="text-align:center; color:rgba(255,255,255,0.2); margin-top: 50px;">DRAG TO MOVE</div>
+            <div id="joystick-base"></div>
+            <div id="joystick-knob"></div>
+        </div>
     </div>
 
     <!-- MENU -->
     <div id="overlay-menu" class="hidden">
         <div class="menu-header">GAME MENU</div>
+        
         <div id="game-selector-container" class="hidden" style="width:100%; display:flex; flex-direction:column; align-items:center;">
-            <select id="game-list" class="game-select"><option value="" disabled selected>Select a Game...</option></select>
+            <select id="game-list" class="game-select">
+                <option value="" disabled selected>Select a Game...</option>
+            </select>
             <button class="menu-option primary" onclick="startGameFromMenu()">Start Game</button>
         </div>
+
         <button id="btn-next-round" class="menu-option primary hidden" onclick="sendCmd('NEXT_ROUND')">Start Next Round</button>
         <button id="btn-play-again" class="menu-option primary hidden" onclick="confirmPlayAgain()">Play Again</button>
         <button id="btn-resume" class="menu-option" onclick="toggleMenu()">Resume</button>
@@ -124,13 +136,6 @@
                 document.getElementById('global-menu-btn').classList.remove('hidden');
             }
             else if (data.type === 'PING') conn.send({ type: 'PONG', ts: data.ts });
-            
-            // NEW: IMAGE UPDATE
-            else if (data.type === 'SCREEN_UPDATE') {
-                const img = document.getElementById('game-mirror');
-                img.src = data.image;
-            }
-            
             else if (data.type === 'STATE_CHANGE') {
                 if(data.player) player = { ...player, ...data.player };
                 currentContext = data.context || 'IDLE'; 
@@ -192,25 +197,45 @@
         btn.addEventListener('mousedown', () => { sendInput('PRESS'); btn.style.transform = "scale(0.96)"; });
         btn.addEventListener('mouseup', () => { sendInput('RELEASE'); btn.style.transform = "scale(1)"; });
 
-        // --- MIRROR CLICK INPUT ---
-        const mirror = document.getElementById('game-mirror');
-        mirror.addEventListener('touchstart', (e) => {
-            e.preventDefault();
-            const rect = mirror.getBoundingClientRect();
-            const touch = e.touches[0];
-            const x = (touch.clientX - rect.left) / rect.width;
-            const y = (touch.clientY - rect.top) / rect.height;
-            // Send Normalized Coords
-            sendInput('TOUCH', { x: x, y: y });
-        });
+        const padMove = document.getElementById('touch-move-zone');
+        const padClick = document.getElementById('touch-click-zone');
+        let stickActive = false;
+        let startX, startY;
+        const stickBase = document.getElementById('joystick-base');
+        const stickKnob = document.getElementById('joystick-knob');
+
+        padClick.addEventListener('touchstart', (e) => { e.preventDefault(); sendInput('PRESS'); });
+        padClick.addEventListener('touchend', (e) => { e.preventDefault(); sendInput('RELEASE'); });
         
-        // Add Mouse click support for testing on laptop
-        mirror.addEventListener('mousedown', (e) => {
+        padMove.addEventListener('touchstart', (e) => {
             e.preventDefault();
-            const rect = mirror.getBoundingClientRect();
-            const x = (e.clientX - rect.left) / rect.width;
-            const y = (e.clientY - rect.top) / rect.height;
-            sendInput('TOUCH', { x: x, y: y });
+            const touch = e.touches[0];
+            startX = touch.clientX; startY = touch.clientY;
+            stickBase.style.display = 'block'; stickKnob.style.display = 'block';
+            stickBase.style.left = startX + 'px'; stickBase.style.top = startY + 'px';
+            stickKnob.style.left = startX + 'px'; stickKnob.style.top = startY + 'px';
+            stickActive = true;
+        }, {passive:false});
+
+        padMove.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            if(!stickActive) return;
+            const touch = e.touches[0];
+            let dx = touch.clientX - startX;
+            let dy = touch.clientY - startY;
+            const dist = Math.sqrt(dx*dx + dy*dy);
+            const maxDist = 60;
+            if (dist > maxDist) { dx = (dx / dist) * maxDist; dy = (dy / dist) * maxDist; }
+            stickKnob.style.left = (startX + dx) + 'px';
+            stickKnob.style.top = (startY + dy) + 'px';
+            sendInput('VECTOR', { x: dx/maxDist, y: dy/maxDist });
+        }, {passive:false});
+
+        padMove.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            stickActive = false;
+            stickBase.style.display = 'none'; stickKnob.style.display = 'none';
+            sendInput('VECTOR', { x: 0, y: 0 });
         });
 
         function showScreen(id) { document.querySelectorAll('.screen').forEach(s => s.classList.remove('active')); document.getElementById(id).classList.add('active'); }
