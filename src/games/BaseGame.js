@@ -23,8 +23,7 @@ export default class BaseGame {
             showRoundResultUI: true,
             turnBased: false,
             turnBasedBackgroundColor: false,
-            // NEW: Define Controller Type to show/hide cursors
-            controllerType: rules.controllerType || 'ONE_BUTTON', // 'ONE_BUTTON' or 'TOUCHPAD'
+            controllerType: rules.controllerType || 'ONE_BUTTON', 
             ...rules
         };
 
@@ -35,10 +34,12 @@ export default class BaseGame {
             isEliminated: false,
             isPermEliminated: false,
             wasPressed: false,
-            // NEW: Virtual Input State
+            
+            // --- CURSOR STATE ---
             cursorX: this.V_WIDTH / 2,
             cursorY: this.V_HEIGHT / 2,
-            isClicking: false
+            isClicking: false,
+            inputVector: { x: 0, y: 0 } // Stores the continuous D-Pad direction
         }));
 
         this.state = {
@@ -78,9 +79,9 @@ export default class BaseGame {
         this.players.forEach(p => {
             p.score = 0;
             p.isPermEliminated = false;
-            // Reset Cursors to center
             p.cursorX = this.CX;
             p.cursorY = this.CY;
+            p.inputVector = { x: 0, y: 0 };
         });
 
         if (this.audio && this.mode !== 'demo') this.audio.setTrack('game');
@@ -111,6 +112,21 @@ export default class BaseGame {
             this.timerLastTick = p.millis();
         }
 
+        // --- CURSOR PHYSICS LOOP ---
+        // Apply movement vector every frame for smooth sliding
+        if (this.config.controllerType === 'TOUCHPAD') {
+            this.players.forEach(pl => {
+                if(pl.inputVector.x !== 0 || pl.inputVector.y !== 0) {
+                    const speed = 15;
+                    pl.cursorX += pl.inputVector.x * speed;
+                    pl.cursorY += pl.inputVector.y * speed;
+                    // Clamp
+                    pl.cursorX = Math.max(0, Math.min(this.V_WIDTH, pl.cursorX));
+                    pl.cursorY = Math.max(0, Math.min(this.V_HEIGHT, pl.cursorY));
+                }
+            });
+        }
+
         if (this.config.turnBasedBackgroundColor && this.mode !== 'demo') {
             this.bgColor[0] = p.lerp(this.bgColor[0], this.targetBgColor[0], 0.05);
             this.bgColor[1] = p.lerp(this.bgColor[1], this.targetBgColor[1], 0.05);
@@ -137,7 +153,6 @@ export default class BaseGame {
 
         this.onDraw();
         
-        // NEW: Draw Virtual Cursors (Only if enabled and not demo)
         if (this.mode !== 'demo' && this.config.controllerType === 'TOUCHPAD') {
             this.drawCursors();
         }
@@ -148,30 +163,22 @@ export default class BaseGame {
     drawCursors() {
         const p = this.p;
         this.players.forEach(pl => {
-            // Draw cursor for every player (even keyboard/mouse users can have one for consistency)
-            // But specifically useful for mobile.
-            if(pl.isEliminated) return;
+            // HIDE LOCAL CURSORS (Real mouse exists)
+            if(pl.isEliminated || pl.type === 'local') return;
 
             p.push();
             p.translate(pl.cursorX, pl.cursorY);
             p.fill(pl.color);
             p.stroke(255); p.strokeWeight(3);
             
-            // Draw standard cursor arrow
             p.beginShape();
-            p.vertex(0, 0);
-            p.vertex(0, 25);
-            p.vertex(8, 18);
-            p.vertex(16, 28);
-            p.vertex(20, 24);
-            p.vertex(12, 16);
-            p.vertex(20, 14);
+            p.vertex(0, 0); p.vertex(0, 35); p.vertex(10, 25);
+            p.vertex(20, 38); p.vertex(26, 32); p.vertex(16, 20); p.vertex(28, 20);
             p.endShape(p.CLOSE);
             
-            // Click Ripple
             if(pl.isClicking) {
-                p.noFill(); p.stroke(pl.color); p.strokeWeight(2);
-                p.circle(5, 5, 40);
+                p.noFill(); p.stroke(pl.color); p.strokeWeight(3);
+                p.circle(5, 5, 50);
             }
             p.pop();
         });
@@ -194,17 +201,9 @@ export default class BaseGame {
             if (activeP.id !== playerId) return;
         }
 
-        // --- NEW: Handle Virtual Cursor Movement ---
+        // --- STORE VECTOR ---
         if (type === 'VECTOR' && payload) {
-            // payload.x and payload.y are -1 to 1 (Joystick normalized)
-            // Move cursor speed
-            const speed = 15; 
-            p.cursorX += payload.x * speed;
-            p.cursorY += payload.y * speed;
-            
-            // Clamp to screen
-            p.cursorX = Math.max(0, Math.min(this.V_WIDTH, p.cursorX));
-            p.cursorY = Math.max(0, Math.min(this.V_HEIGHT, p.cursorY));
+            p.inputVector = payload; // Store {x, y}
         }
         else if (type === 'PRESS') {
             p.isClicking = true;
@@ -213,7 +212,6 @@ export default class BaseGame {
             p.isClicking = false;
         }
 
-        // Pass to specific game logic
         this.onPlayerInput(p, type, payload); 
     }
 
@@ -241,8 +239,8 @@ export default class BaseGame {
             p.isEliminated = false;
             p.statusType = (this.config.livesPerRound > 1) ? 'hearts' : 'score';
             p.customStatus = (this.config.livesPerRound > 1) ? p.lives : undefined;
-            // Reset click state
             p.isClicking = false;
+            p.inputVector = {x:0, y:0};
         });
 
         if (this.config.turnBased) {
