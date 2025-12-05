@@ -2,7 +2,6 @@
 
 export default class PlayerManager {
     constructor() {
-        // Default Local Players
         this.players = [
             { id: 0, type: 'local', uuid: 'local-1', name: 'Red', color: '#E24A4A', key: 'Shift', label: 'L-Shift', variant: 'default', accessory: 'Cat Ears' },
             { id: 1, type: 'local', uuid: 'local-2', name: 'Yellow', color: '#F4B84D', key: ' ', label: 'Space', variant: 'feminine', accessory: 'Bow' }
@@ -14,7 +13,11 @@ export default class PlayerManager {
         if (saved) {
             try { 
                 const parsed = JSON.parse(saved);
-                this.players = parsed.filter(p => p.type === 'local');
+                // Ensure local players have UUIDs (legacy fix)
+                this.players = parsed.filter(p => p.type === 'local').map((p, i) => ({
+                    ...p,
+                    uuid: p.uuid || `local-${i+1}`
+                }));
             } catch (e) { }
         }
     }
@@ -23,7 +26,7 @@ export default class PlayerManager {
     getPlayer(index) { return this.players[index]; }
     getPlayerById(id) { return this.players.find(p => p.id === id); }
     
-    // NEW: Find by Persistent Session ID
+    // --- KEY FOR RECONNECTION ---
     getPlayerByUUID(uuid) { return this.players.find(p => p.uuid === uuid); }
 
     savePlayers() {
@@ -33,12 +36,9 @@ export default class PlayerManager {
 
     addPlayer(type = 'local', uuid = null) {
         const nextId = this.players.length > 0 ? Math.max(...this.players.map(p => p.id)) + 1 : 0;
-        
-        // Find next unused color
         const usedColors = this.players.map(p => p.color);
         const color = this.colors.find(c => !usedColors.includes(c)) || '#333';
 
-        // Local Input assignment
         const inputPool = [
             { key: 'Shift', label: 'L-Shift' }, { key: ' ', label: 'Space' },
             { key: '+', label: '+' }, { key: 'Enter', label: 'Enter' },
@@ -56,7 +56,7 @@ export default class PlayerManager {
 
         const newPlayer = {
             id: nextId,
-            uuid: uuid || `temp-${Date.now()}`, // Use provided UUID (from phone) or temp
+            uuid: uuid || `temp-${Date.now()}`,
             type: type,
             name: `P${nextId + 1}`,
             color: color,
