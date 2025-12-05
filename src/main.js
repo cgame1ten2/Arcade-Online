@@ -10,7 +10,6 @@ import TournamentManager from './core/TournamentManager.js';
 import NetworkManager from './core/NetworkManager.js';
 import { GAME_LIST } from './GameRegistry.js';
 
-// --- SYSTEM INITIALIZATION ---
 const players = new PlayerManager();
 const inputs = new InputManager(players);
 const ui = new UIManager();
@@ -21,14 +20,12 @@ const network = new NetworkManager(players, inputs);
 
 inputs.setNetworkManager(network);
 
-// --- GLOBAL STATE ---
 let currentMode = 'hub';
 let currentGameState = 'IDLE'; 
-let currentScreenType = 'CONTROLLER'; // Track this so we don't overwrite Touchpad mode
+let currentScreenType = 'CONTROLLER';
 let lobbyInstances = []; 
 let demoInstances = [];
 
-// --- DOM ELEMENTS ---
 const hubGrid = document.getElementById('hub-grid');
 const gameStage = document.getElementById('game-stage');
 const backBtn = document.getElementById('back-to-hub-btn');
@@ -107,13 +104,16 @@ function init() {
     window.addEventListener('remote-command', (e) => {
         const cmd = e.detail; 
         if (cmd.action === 'EXIT') returnToHub();
+        
         else if (cmd.action === 'NEXT_ROUND') {
             if (currentMode === 'game' && runner.activeGame) {
+                ui.hideMessage(); // --- FIX: Clear the "Winner" popup
                 runner.activeGame.startNewRound();
             }
         }
         else if (cmd.action === 'PLAY_AGAIN') {
             if (currentMode === 'game' && runner.activeGame) {
+                ui.hideMessage(); // --- FIX: Clear the "Podium" popup
                 runner.activeGame.setup(); 
             }
         }
@@ -128,10 +128,8 @@ function init() {
         }
     });
 
-    // --- FIX: Listen for Internal Game Updates ---
     window.addEventListener('game-state-change', (e) => {
-        currentGameState = e.detail; // PLAYING, ROUND_OVER, GAME_OVER
-        // Re-broadcast using the stored screen type (Controller/Touchpad)
+        currentGameState = e.detail; 
         network.broadcastState(currentScreenType, currentGameState);
     });
 
@@ -149,7 +147,6 @@ function renderHub() {
     GAME_LIST.forEach(game => createGameCard(game));
     audio.setTrack('lobby');
     
-    // Reset Mobile to Lobby
     const gameNames = GAME_LIST.map(g => ({ id: g.id, title: g.title }));
     network.broadcastState('LOBBY', 'IDLE', { gameList: gameNames });
 
@@ -203,7 +200,6 @@ function enterGameMode(gameConfig) {
     gameStage.classList.remove('hidden');
     pauseDemos();
 
-    // Determine Phone Screen Type
     currentScreenType = 'CONTROLLER'; 
     if (gameConfig && gameConfig.id === 'avatar-match') {
         currentScreenType = 'TOUCHPAD'; 
