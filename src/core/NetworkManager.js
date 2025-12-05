@@ -9,8 +9,8 @@ export default class NetworkManager {
         this.roomId = null;
         this.systemLag = 0; 
         
-        // Fix: Use arrow function to bind 'this' correctly
-        setInterval(() => this.measureLatency(), 1000);
+        // --- FIX: Correct function name ---
+        setInterval(() => this.maintenanceLoop(), 1000);
     }
 
     async hostGame() {
@@ -28,7 +28,8 @@ export default class NetworkManager {
 
     handleConnection(conn) {
         conn.on('open', () => {
-            conn.send({ type: 'WHO_ARE_YOU' });
+            // Handshake Step 1: Ask phone for UUID
+            conn.send({ type: 'WHO_ARE_YOU' }); 
         });
 
         conn.on('data', (data) => this.handleData(conn, data));
@@ -37,14 +38,14 @@ export default class NetworkManager {
             this.disconnectPeer(conn.peer);
         });
         
-        // Handle error to prevent crash
-        conn.on('error', (err) => {
-            console.warn("Connection Error:", err);
+        // Safety for connection errors
+        conn.on('error', () => {
             this.disconnectPeer(conn.peer);
         });
     }
 
     handleData(conn, data) {
+        // Handshake Step 2: Receive UUID
         if (data.type === 'HELLO') {
             this.registerPlayer(conn, data.uuid);
             return;
@@ -77,16 +78,22 @@ export default class NetworkManager {
         const existingPlayer = this.players.getPlayerByUUID(uuid);
 
         if (existingPlayer) {
-            // Reconnection: Kill old connections for this user
+            console.log(`♻️ RECONNECT: ${existingPlayer.name}`);
+            
+            // Clean up old connections for this user (Zombie Cleanup)
             for (const [peerId, client] of this.connections.entries()) {
                 if (client.playerId === existingPlayer.id && peerId !== conn.peer) {
                     this.connections.delete(peerId);
                 }
             }
+            
+            // Bind new connection
             this.connections.set(conn.peer, { conn, playerId: existingPlayer.id, lastHeartbeat: performance.now(), rtt: 0 });
             this.syncPlayerState(conn, existingPlayer);
         } else {
-            // New Player
+            console.log(`✨ NEW PLAYER: ${uuid}`);
+            
+            // Create new
             const newPlayer = this.players.addPlayer('mobile', uuid);
             this.connections.set(conn.peer, { conn, playerId: newPlayer.id, lastHeartbeat: performance.now(), rtt: 0 });
             this.syncPlayerState(conn, newPlayer);
@@ -100,6 +107,9 @@ export default class NetworkManager {
             color: player.color, name: player.name,
             accessory: player.accessory, variant: player.variant
         });
+        
+        // Ensure they get the current game screen immediately
+        // (This happens automatically in main.js loop, but good to ensure)
     }
 
     disconnectPeer(peerId) {
@@ -109,9 +119,7 @@ export default class NetworkManager {
         }
     }
 
-    // --- FIX: Ensure this method exists inside the class ---
-    measureLatency() {
-        if (this.connections.size === 0) { this.systemLag = 0; return; }
+    maintenanceLoop() {
         const now = performance.now();
         
         this.connections.forEach((client, peerId) => {
@@ -119,10 +127,11 @@ export default class NetworkManager {
                 client.conn.send({ type: 'PING', ts: now });
             }
 
-            // Zombie Reaper: 45 seconds timeout
+            // 45 Second Timeout
             if (now - client.lastHeartbeat > 45000) {
                 console.log(`💀 Zombie Reaper: Kicking Player ${client.playerId}`);
                 if(client.conn.open) client.conn.send({ type: 'KICK' });
+                
                 this.players.removePlayerById(client.playerId);
                 this.connections.delete(peerId);
                 window.dispatchEvent(new CustomEvent('player-update'));
