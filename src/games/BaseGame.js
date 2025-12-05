@@ -27,6 +27,9 @@ export default class BaseGame {
             ...rules
         };
 
+        // Tunable Cursor Speed
+        this.CURSOR_SPEED = 8; 
+
         this.players = this.allPlayers.map(p => ({ 
             ...p, 
             score: 0, 
@@ -34,12 +37,10 @@ export default class BaseGame {
             isEliminated: false,
             isPermEliminated: false,
             wasPressed: false,
-            
-            // --- CURSOR STATE ---
             cursorX: this.V_WIDTH / 2,
             cursorY: this.V_HEIGHT / 2,
             isClicking: false,
-            inputVector: { x: 0, y: 0 } // Stores the continuous D-Pad direction
+            inputVector: { x: 0, y: 0 }
         }));
 
         this.state = {
@@ -112,15 +113,12 @@ export default class BaseGame {
             this.timerLastTick = p.millis();
         }
 
-        // --- CURSOR PHYSICS LOOP ---
-        // Apply movement vector every frame for smooth sliding
+        // --- CURSOR UPDATE (ALWAYS RUNS) ---
         if (this.config.controllerType === 'TOUCHPAD') {
             this.players.forEach(pl => {
                 if(pl.inputVector.x !== 0 || pl.inputVector.y !== 0) {
-                    const speed = 15;
-                    pl.cursorX += pl.inputVector.x * speed;
-                    pl.cursorY += pl.inputVector.y * speed;
-                    // Clamp
+                    pl.cursorX += pl.inputVector.x * this.CURSOR_SPEED;
+                    pl.cursorY += pl.inputVector.y * this.CURSOR_SPEED;
                     pl.cursorX = Math.max(0, Math.min(this.V_WIDTH, pl.cursorX));
                     pl.cursorY = Math.max(0, Math.min(this.V_HEIGHT, pl.cursorY));
                 }
@@ -153,6 +151,7 @@ export default class BaseGame {
 
         this.onDraw();
         
+        // --- DRAW CURSORS ---
         if (this.mode !== 'demo' && this.config.controllerType === 'TOUCHPAD') {
             this.drawCursors();
         }
@@ -196,16 +195,17 @@ export default class BaseGame {
         const p = this.players.find(pl => pl.id === playerId);
         if (!p || p.isEliminated || p.isPermEliminated) return;
         
-        if (this.config.turnBased) {
-            const activeP = this.players[this.state.activePlayerIndex];
-            if (activeP.id !== playerId) return;
-        }
+        // --- KEY CHANGE: WE REMOVED THE TURN CHECK HERE ---
+        // This allows cursors to move even if it's not their turn.
+        // We only enforce turn blocking inside specific PRESS events if needed.
 
         // --- STORE VECTOR ---
         if (type === 'VECTOR' && payload) {
-            p.inputVector = payload; // Store {x, y}
+            p.inputVector = payload; 
         }
         else if (type === 'PRESS') {
+            // Check turns for CLICKS only?
+            // Actually, let's let the specific Game enforce click rules.
             p.isClicking = true;
         }
         else if (type === 'RELEASE') {
