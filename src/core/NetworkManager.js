@@ -9,7 +9,7 @@ export default class NetworkManager {
         this.roomId = null;
         this.systemLag = 0; 
         
-        // --- FIX: Correct function name ---
+        // Corrected loop call
         setInterval(() => this.maintenanceLoop(), 1000);
     }
 
@@ -27,73 +27,37 @@ export default class NetworkManager {
     }
 
     handleConnection(conn) {
-        conn.on('open', () => {
-            // Handshake Step 1: Ask phone for UUID
-            conn.send({ type: 'WHO_ARE_YOU' }); 
-        });
-
+        conn.on('open', () => { conn.send({ type: 'WHO_ARE_YOU' }); });
         conn.on('data', (data) => this.handleData(conn, data));
-        
-        conn.on('close', () => {
-            this.disconnectPeer(conn.peer);
-        });
-        
-        // Safety for connection errors
-        conn.on('error', () => {
-            this.disconnectPeer(conn.peer);
-        });
+        conn.on('close', () => { this.disconnectPeer(conn.peer); });
+        conn.on('error', () => { this.disconnectPeer(conn.peer); });
     }
 
     handleData(conn, data) {
-        // Handshake Step 2: Receive UUID
-        if (data.type === 'HELLO') {
-            this.registerPlayer(conn, data.uuid);
-            return;
-        }
-
+        if (data.type === 'HELLO') { this.registerPlayer(conn, data.uuid); return; }
         const client = this.connections.get(conn.peer);
         if (!client) return; 
-
         client.lastHeartbeat = performance.now();
 
         switch (data.type) {
-            case 'PONG':
-                client.rtt = performance.now() - data.ts;
-                this.recalculateLag();
-                break;
-            case 'INPUT':
-                this.input.triggerInput(client.playerId, data.action, true, data.payload);
-                break;
-            case 'UPDATE_PROFILE':
-                this.players.updatePlayer(client.playerId, data.payload);
-                window.dispatchEvent(new CustomEvent('player-update')); 
-                break;
-            case 'COMMAND':
-                window.dispatchEvent(new CustomEvent('remote-command', { detail: data }));
-                break;
+            case 'PONG': client.rtt = performance.now() - data.ts; this.recalculateLag(); break;
+            case 'INPUT': this.input.triggerInput(client.playerId, data.action, true, data.payload); break;
+            case 'UPDATE_PROFILE': this.players.updatePlayer(client.playerId, data.payload); window.dispatchEvent(new CustomEvent('player-update')); break;
+            case 'COMMAND': window.dispatchEvent(new CustomEvent('remote-command', { detail: data })); break;
         }
     }
 
     registerPlayer(conn, uuid) {
         const existingPlayer = this.players.getPlayerByUUID(uuid);
-
         if (existingPlayer) {
             console.log(`♻️ RECONNECT: ${existingPlayer.name}`);
-            
-            // Clean up old connections for this user (Zombie Cleanup)
             for (const [peerId, client] of this.connections.entries()) {
-                if (client.playerId === existingPlayer.id && peerId !== conn.peer) {
-                    this.connections.delete(peerId);
-                }
+                if (client.playerId === existingPlayer.id && peerId !== conn.peer) this.connections.delete(peerId);
             }
-            
-            // Bind new connection
             this.connections.set(conn.peer, { conn, playerId: existingPlayer.id, lastHeartbeat: performance.now(), rtt: 0 });
             this.syncPlayerState(conn, existingPlayer);
         } else {
             console.log(`✨ NEW PLAYER: ${uuid}`);
-            
-            // Create new
             const newPlayer = this.players.addPlayer('mobile', uuid);
             this.connections.set(conn.peer, { conn, playerId: newPlayer.id, lastHeartbeat: performance.now(), rtt: 0 });
             this.syncPlayerState(conn, newPlayer);
@@ -107,9 +71,6 @@ export default class NetworkManager {
             color: player.color, name: player.name,
             accessory: player.accessory, variant: player.variant
         });
-        
-        // Ensure they get the current game screen immediately
-        // (This happens automatically in main.js loop, but good to ensure)
     }
 
     disconnectPeer(peerId) {
@@ -121,23 +82,16 @@ export default class NetworkManager {
 
     maintenanceLoop() {
         const now = performance.now();
-        
         this.connections.forEach((client, peerId) => {
-            if (client.conn.open) {
-                client.conn.send({ type: 'PING', ts: now });
-            }
-
-            // 45 Second Timeout
+            if (client.conn.open) client.conn.send({ type: 'PING', ts: now });
             if (now - client.lastHeartbeat > 45000) {
                 console.log(`💀 Zombie Reaper: Kicking Player ${client.playerId}`);
                 if(client.conn.open) client.conn.send({ type: 'KICK' });
-                
                 this.players.removePlayerById(client.playerId);
                 this.connections.delete(peerId);
                 window.dispatchEvent(new CustomEvent('player-update'));
             }
         });
-
         this.recalculateLag();
     }
 
