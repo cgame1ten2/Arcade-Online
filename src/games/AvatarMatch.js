@@ -12,7 +12,7 @@ export default class AvatarMatch extends BaseGame {
         this.config.turnBased = true;
         this.config.turnBasedBackgroundColor = true;
         
-        // --- KEY: Enable Mouse Mode ---
+        // Enable Touchpad Mode
         this.config.controllerType = 'TOUCHPAD';
 
         this.CARD_SIZE = 150;
@@ -35,15 +35,13 @@ export default class AvatarMatch extends BaseGame {
         this.generateBoard();
     }
 
-    // --- NEW: Handle clicks from Virtual Cursors ---
+    // Handle Clicks via Virtual Cursor (Mobile) or Virtualized Mouse (Local)
     onPlayerInput(player, type) {
         if (!this.canClick) return;
-        
-        // Only allow active player to click (Turn Based)
-        // Note: Joystick movement is allowed for everyone to see, but clicks are restricted
         if (player.idx !== this.state.activePlayerIndex) return;
 
         if (type === 'PRESS') {
+            // Check collision against this player's virtual cursor
             this.handleInputClick(player.cursorX, player.cursorY);
         }
     }
@@ -56,15 +54,12 @@ export default class AvatarMatch extends BaseGame {
             this.drawCard(this.cards[i]);
         }
 
-        // Local Mouse fallback (for testing/host)
+        // Local Mouse Logic
         if (this.mode !== 'demo' && p.mouseIsPressed) {
-            // Virtualize Mouse Coords
-            const vx = (p.mouseX - this.transX) / this.scaleFactor;
-            const vy = (p.mouseY - this.transY) / this.scaleFactor;
-            
-            // Only if it's the host's turn (optional, but good for testing)
             const activeP = this.players[this.state.activePlayerIndex];
             if(activeP.type === 'local') {
+                const vx = (p.mouseX - this.transX) / this.scaleFactor;
+                const vy = (p.mouseY - this.transY) / this.scaleFactor;
                 this.handleInputClick(vx, vy);
                 p.mouseIsPressed = false; 
             }
@@ -84,112 +79,6 @@ export default class AvatarMatch extends BaseGame {
                 break;
             }
         }
-    }
-
-    // ... Rest of logic (generateBoard, flipCard, checkMatch, etc) same as before ...
-    // Keeping it concise here, but assume previous logic methods exist below:
-    
-    generateBoard() {
-        const pCount = this.players.length;
-        if (pCount <= 2) this.totalPairs = 12;      
-        else if (pCount === 3) this.totalPairs = 15; 
-        else this.totalPairs = 18;                   
-
-        const pairs = [];
-        const usedConfigs = new Set();
-
-        for (let i = 0; i < this.totalPairs; i++) {
-            let config;
-            let hash;
-            let attempts = 0;
-            do {
-                config = this.generateRandomConfig(i);
-                hash = `${config.color}-${config.accessory}-${config.variant}`;
-                attempts++;
-            } while (usedConfigs.has(hash) && attempts < 200);
-            
-            usedConfigs.add(hash);
-            pairs.push({ ...config });
-            pairs.push({ ...config });
-        }
-
-        this.shuffle(pairs);
-
-        const totalCards = pairs.length;
-        const cols = 6; 
-        const rows = Math.ceil(totalCards / cols);
-        const totalW = cols * this.CARD_SIZE + (cols - 1) * this.GAP;
-        const totalH = rows * this.CARD_SIZE + (rows - 1) * this.GAP;
-        const startX = (this.V_WIDTH - totalW) / 2 + this.CARD_SIZE / 2;
-        const startY = (this.V_HEIGHT - totalH) / 2 + this.CARD_SIZE / 2;
-
-        let idx = 0;
-        for (let y = 0; y < rows; y++) {
-            for (let x = 0; x < cols; x++) {
-                if (idx >= pairs.length) break;
-                this.cards.push({
-                    x: startX + x * (this.CARD_SIZE + this.GAP),
-                    y: startY + y * (this.CARD_SIZE + this.GAP),
-                    data: pairs[idx],
-                    isFlipped: false, 
-                    isMatched: false, 
-                    matchOwner: null, 
-                    scaleX: 1, 
-                    flipState: 'back' 
-                });
-                idx++;
-            }
-        }
-    }
-
-    generateRandomConfig(id) {
-        const colors = ['#FF6B6B', '#4D96FF', '#FFD93D', '#6BCB77', '#A66CFF', '#FF9F43', '#54a0ff'];
-        const accs = AvatarSystem.ACCESSORIES;
-        return {
-            color: this.p.random(colors),
-            accessory: this.p.random(accs),
-            variant: this.p.random(['default', 'feminine']),
-            id: id
-        };
-    }
-
-    drawCard(card) {
-        const p = this.p;
-        p.push();
-        p.translate(card.x, card.y);
-
-        if (card.flipState === 'flipping_in') {
-            card.scaleX -= this.ANIM_SPEED;
-            if (card.scaleX <= 0) {
-                card.scaleX = 0;
-                card.isFlipped = !card.isFlipped;
-                card.flipState = 'flipping_out';
-            }
-        } else if (card.flipState === 'flipping_out') {
-            card.scaleX += this.ANIM_SPEED;
-            if (card.scaleX >= 1) {
-                card.scaleX = 1;
-                card.flipState = 'idle';
-                if (this.flippedCards.length === 2 && card.isFlipped) {
-                    this.checkMatch();
-                }
-            }
-        }
-
-        p.scale(card.scaleX, 1);
-        p.noStroke(); p.fill(0, 30); p.rectMode(p.CENTER); p.rect(6, 6, this.CARD_SIZE, this.CARD_SIZE, 16);
-
-        if (!card.isFlipped && !card.isMatched) {
-            p.fill('#fff'); p.rect(0, 0, this.CARD_SIZE, this.CARD_SIZE, 16);
-            p.fill('#f0f0f0'); p.circle(0, 0, 90);
-            p.fill('#ccc'); p.textSize(70); p.textAlign(p.CENTER, p.CENTER); p.textStyle(p.BOLD); p.text('?', 0, 6);
-        } else {
-            if (card.isMatched) { p.fill(card.matchOwner || '#fff'); p.stroke(255); p.strokeWeight(6); } 
-            else { p.fill('#fff'); p.noStroke(); }
-            p.rect(0, 0, this.CARD_SIZE, this.CARD_SIZE, 16);
-            this.avatars.draw({ x: 0, y: 15, size: 90, color: card.data.color, variant: card.data.variant, accessory: card.data.accessory, expression: card.isMatched ? 'happy' : 'idle' });
-        }
-        p.pop();
     }
 
     flipCard(card) {
@@ -229,20 +118,50 @@ export default class AvatarMatch extends BaseGame {
         }
     }
 
-    shuffle(array) {
-        for (let i = array.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [array[i], array[j]] = [array[j], array[i]];
+    // ... Standard setup helpers ...
+    generateBoard() {
+        const pCount = this.players.length;
+        if (pCount <= 2) this.totalPairs = 12; else if (pCount === 3) this.totalPairs = 15; else this.totalPairs = 18;
+        const pairs = [];
+        const usedConfigs = new Set();
+        for (let i = 0; i < this.totalPairs; i++) {
+            let config; let hash; let attempts = 0;
+            do { config = this.generateRandomConfig(i); hash = `${config.color}-${config.accessory}-${config.variant}`; attempts++; } while (usedConfigs.has(hash) && attempts < 200);
+            usedConfigs.add(hash); pairs.push({ ...config }); pairs.push({ ...config });
         }
-    }
-    
-    runDemoAI() {
-        if (this.p.frameCount % 60 === 0 && this.flippedCards.length < 2) {
-            const available = this.cards.filter(c => !c.isMatched && !c.isFlipped);
-            if (available.length > 0) {
-                const pick = this.p.random(available);
-                this.flipCard(pick);
+        this.shuffle(pairs);
+        const cols = 6; const rows = Math.ceil(pairs.length / cols);
+        const totalW = cols * this.CARD_SIZE + (cols - 1) * this.GAP;
+        const totalH = rows * this.CARD_SIZE + (rows - 1) * this.GAP;
+        const startX = (this.V_WIDTH - totalW) / 2 + this.CARD_SIZE / 2;
+        const startY = (this.V_HEIGHT - totalH) / 2 + this.CARD_SIZE / 2;
+        let idx = 0;
+        for (let y = 0; y < rows; y++) {
+            for (let x = 0; x < cols; x++) {
+                if (idx >= pairs.length) break;
+                this.cards.push({ x: startX + x * (this.CARD_SIZE + this.GAP), y: startY + y * (this.CARD_SIZE + this.GAP), data: pairs[idx], isFlipped: false, isMatched: false, matchOwner: null, scaleX: 1, flipState: 'back' });
+                idx++;
             }
         }
     }
+
+    generateRandomConfig(id) {
+        const colors = ['#FF6B6B', '#4D96FF', '#FFD93D', '#6BCB77', '#A66CFF', '#FF9F43', '#54a0ff'];
+        const accs = AvatarSystem.ACCESSORIES;
+        return { color: this.p.random(colors), accessory: this.p.random(accs), variant: this.p.random(['default', 'feminine']), id: id };
+    }
+
+    drawCard(card) {
+        const p = this.p; p.push(); p.translate(card.x, card.y);
+        if (card.flipState === 'flipping_in') { card.scaleX -= this.ANIM_SPEED; if (card.scaleX <= 0) { card.scaleX = 0; card.isFlipped = !card.isFlipped; card.flipState = 'flipping_out'; } } 
+        else if (card.flipState === 'flipping_out') { card.scaleX += this.ANIM_SPEED; if (card.scaleX >= 1) { card.scaleX = 1; card.flipState = 'idle'; if (this.flippedCards.length === 2 && card.isFlipped) this.checkMatch(); } }
+        p.scale(card.scaleX, 1); p.noStroke(); p.fill(0, 30); p.rectMode(p.CENTER); p.rect(6, 6, this.CARD_SIZE, this.CARD_SIZE, 16);
+        if (!card.isFlipped && !card.isMatched) { p.fill('#fff'); p.rect(0, 0, this.CARD_SIZE, this.CARD_SIZE, 16); p.fill('#f0f0f0'); p.circle(0, 0, 90); p.fill('#ccc'); p.textSize(70); p.textAlign(p.CENTER, p.CENTER); p.textStyle(p.BOLD); p.text('?', 0, 6); } 
+        else { if (card.isMatched) { p.fill(card.matchOwner || '#fff'); p.stroke(255); p.strokeWeight(6); } else { p.fill('#fff'); p.noStroke(); } p.rect(0, 0, this.CARD_SIZE, this.CARD_SIZE, 16); this.avatars.draw({ x: 0, y: 15, size: 90, color: card.data.color, variant: card.data.variant, accessory: card.data.accessory, expression: card.isMatched ? 'happy' : 'idle' }); }
+        p.pop();
+    }
+
+    shuffle(array) { for (let i = array.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [array[i], array[j]] = [array[j], array[i]]; } }
+    
+    runDemoAI() { if (this.p.frameCount % 60 === 0 && this.flippedCards.length < 2) { const available = this.cards.filter(c => !c.isMatched && !c.isFlipped); if (available.length > 0) { const pick = this.p.random(available); this.flipCard(pick); } } }
 }
