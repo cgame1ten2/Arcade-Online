@@ -36,6 +36,9 @@ const addPlayerBtn = document.getElementById('add-player-btn');
 const playerConfigGrid = document.getElementById('player-config-grid');
 const mainHeader = document.getElementById('main-header');
 
+// Keep ref to update text later
+let hostBtnRef = null;
+
 function init() {
     console.log("🚀 Wonder Arcade Engine Started");
 
@@ -46,26 +49,38 @@ function init() {
     };
     document.addEventListener('click', startAudio);
 
+    // --- HOST BUTTON ---
     if (!document.getElementById('host-game-btn')) {
         const hostBtn = document.createElement('button');
         hostBtn.id = 'host-game-btn';
         hostBtn.className = 'icon-btn';
         hostBtn.innerText = '📡 Host Game';
         hostBtn.style.marginRight = '10px';
+        
         hostBtn.onclick = () => {
             audio.play('click');
             hostBtn.innerText = 'Starting...';
             hostBtn.disabled = true;
+            
             network.hostGame();
+            
             network.onHostReady = (code) => {
-                hostBtn.innerText = `Room: ${code}`;
+                // Initial Text
+                updateHostButton(code);
                 hostBtn.style.background = '#2ecc71';
                 hostBtn.style.borderColor = '#27ae60';
                 hostBtn.onclick = null; 
-                ui.showMessage(`Room Code: ${code}`, "Open mobile.html on your phone to join!", "OK", () => ui.hideMessage());
+                
+                ui.showMessage(
+                    `Room Code: ${code}`, 
+                    "Open mobile.html on your phone to join!", 
+                    "OK", 
+                    () => ui.hideMessage()
+                );
             };
         };
         mainHeader.insertBefore(hostBtn, setupBtn);
+        hostBtnRef = hostBtn;
     }
 
     setupBtn.onclick = () => {
@@ -77,11 +92,12 @@ function init() {
         pauseDemos();
     };
 
-    // Save & Exit (Button 1)
     savePlayersBtn.onclick = () => {
         audio.play('click');
-        closeSettings();
-        location.reload(); // Legacy behavior: safer to reload on full save to reset all states
+        audio.setTrack('lobby');
+        setupOverlay.classList.add('hidden');
+        cleanupLobby(); 
+        renderHub();    
     };
 
     addPlayerBtn.onclick = () => {
@@ -96,8 +112,17 @@ function init() {
         if (e.key === 'Escape' && currentMode === 'game') returnToHub();
     });
 
+    // --- PLAYER UPDATES ---
     window.addEventListener('player-update', () => {
-        if (!setupOverlay.classList.contains('hidden')) renderVisualLobby();
+        // 1. Update Host Button Count
+        if (network.roomId && hostBtnRef) {
+            updateHostButton(network.roomId);
+        }
+
+        // 2. Refresh Lobby if open
+        if (!setupOverlay.classList.contains('hidden')) {
+            renderVisualLobby();
+        }
     });
 
     window.addEventListener('remote-command', (e) => {
@@ -135,21 +160,10 @@ function init() {
     attachGlobalSoundListeners();
 }
 
-function closeSettings() {
-    setupOverlay.classList.add('hidden');
-    cleanupLobby(); 
-    
-    // Determine audio based on where we are returning to
-    if (currentMode === 'game') {
-        audio.setTrack('game');
-        // Restore Phone state to Game Controller
-        network.broadcastState(currentScreenType, currentGameState);
-    } else {
-        audio.setTrack('lobby');
-        // Restore Phone state to Lobby Editor
-        network.broadcastState('LOBBY', 'IDLE');
-        renderHub();
-    }
+function updateHostButton(code) {
+    if(!hostBtnRef) return;
+    const count = players.getActivePlayers().filter(p => p.type === 'mobile').length;
+    hostBtnRef.innerText = `Room: ${code} (${count})`;
 }
 
 function renderHub() {
@@ -258,38 +272,29 @@ function showTournamentSetup() {
     document.getElementById('cancel-tourney').onclick = () => { audio.play('click'); ui.hideMessage(); };
 }
 
-function setupLobby() {
-    // Only listener attachment here, no logic duplication
-}
-
 function cleanupLobby() { lobbyInstances.forEach(p => p.remove()); lobbyInstances = []; }
 
 function renderVisualLobby() {
     cleanupLobby();
     const controls = document.querySelector('.lobby-controls');
     
-    // --- NEW: CLOSE BUTTON ---
+    // REMOVED THE HOST LOBBY "X" (as per request)
     const existingClose = document.getElementById('lobby-close-btn');
-    if (!existingClose) {
-        const closeBtn = document.createElement('button');
-        closeBtn.id = 'lobby-close-btn';
-        closeBtn.innerText = '❌';
-        closeBtn.className = 'icon-btn';
-        closeBtn.style.marginLeft = 'auto'; // Push to right
-        closeBtn.onclick = () => { audio.play('click'); closeSettings(); };
-        document.querySelector('.lobby-header').appendChild(closeBtn);
-    }
+    if (existingClose) existingClose.remove();
 
     const existingSettings = document.querySelector('.lobby-settings');
     if (existingSettings) existingSettings.remove();
+    
     const settingsDiv = document.createElement('div');
     settingsDiv.className = 'lobby-settings';
     settingsDiv.innerHTML = `<button id="toggle-music" class="setting-toggle ${audio.musicEnabled ? 'active' : ''}">Music: ${audio.musicEnabled ? 'ON' : 'OFF'}</button><button id="toggle-sfx" class="setting-toggle ${audio.sfxEnabled ? 'active' : ''}">SFX: ${audio.sfxEnabled ? 'ON' : 'OFF'}</button>`;
     controls.insertBefore(settingsDiv, controls.firstChild);
     document.getElementById('toggle-music').onclick = (e) => { const newState = !audio.musicEnabled; audio.toggleMusic(newState); e.target.textContent = `Music: ${newState ? 'ON' : 'OFF'}`; e.target.classList.toggle('active', newState); audio.play('click'); if (newState) audio.setTrack('config'); };
     document.getElementById('toggle-sfx').onclick = (e) => { const newState = !audio.sfxEnabled; audio.toggleSfx(newState); e.target.textContent = `SFX: ${newState ? 'ON' : 'OFF'}`; e.target.classList.toggle('active', newState); audio.play('click'); };
+    
     playerConfigGrid.innerHTML = '';
     const activePlayers = players.getActivePlayers();
+    
     activePlayers.forEach((p, index) => {
         const card = document.createElement('div');
         card.className = 'player-setup-card';
