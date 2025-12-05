@@ -27,9 +27,6 @@ export default class BaseGame {
             ...rules
         };
 
-        // --- TUNING ---
-        this.CURSOR_SPEED = 8; // Lower = Slower, Higher = Faster
-
         this.players = this.allPlayers.map(p => ({ 
             ...p, 
             score: 0, 
@@ -37,10 +34,12 @@ export default class BaseGame {
             isEliminated: false,
             isPermEliminated: false,
             wasPressed: false,
+            
+            // --- CURSOR STATE ---
             cursorX: this.V_WIDTH / 2,
             cursorY: this.V_HEIGHT / 2,
             isClicking: false,
-            inputVector: { x: 0, y: 0 }
+            inputVector: { x: 0, y: 0 } // Stores the continuous D-Pad direction
         }));
 
         this.state = {
@@ -114,12 +113,14 @@ export default class BaseGame {
         }
 
         // --- CURSOR PHYSICS LOOP ---
+        // Apply movement vector every frame for smooth sliding
         if (this.config.controllerType === 'TOUCHPAD') {
             this.players.forEach(pl => {
                 if(pl.inputVector.x !== 0 || pl.inputVector.y !== 0) {
-                    pl.cursorX += pl.inputVector.x * this.CURSOR_SPEED;
-                    pl.cursorY += pl.inputVector.y * this.CURSOR_SPEED;
-                    // Clamp to screen bounds
+                    const speed = 15;
+                    pl.cursorX += pl.inputVector.x * speed;
+                    pl.cursorY += pl.inputVector.y * speed;
+                    // Clamp
                     pl.cursorX = Math.max(0, Math.min(this.V_WIDTH, pl.cursorX));
                     pl.cursorY = Math.max(0, Math.min(this.V_HEIGHT, pl.cursorY));
                 }
@@ -152,7 +153,6 @@ export default class BaseGame {
 
         this.onDraw();
         
-        // Draw Cursors (Except for Local Players who have a real mouse)
         if (this.mode !== 'demo' && this.config.controllerType === 'TOUCHPAD') {
             this.drawCursors();
         }
@@ -163,9 +163,7 @@ export default class BaseGame {
     drawCursors() {
         const p = this.p;
         this.players.forEach(pl => {
-            // Only draw cursors for Mobile Players or if it's the active local player
-            // Actually, keep it simple: Hide if Eliminated or if it's a local player (they see OS mouse)
-            // UNLESS we want uniform look. Let's hide local.
+            // HIDE LOCAL CURSORS (Real mouse exists)
             if(pl.isEliminated || pl.type === 'local') return;
 
             p.push();
@@ -198,9 +196,14 @@ export default class BaseGame {
         const p = this.players.find(pl => pl.id === playerId);
         if (!p || p.isEliminated || p.isPermEliminated) return;
         
-        // 1. UPDATE STATE (Allow everyone to move/click visually)
+        if (this.config.turnBased) {
+            const activeP = this.players[this.state.activePlayerIndex];
+            if (activeP.id !== playerId) return;
+        }
+
+        // --- STORE VECTOR ---
         if (type === 'VECTOR' && payload) {
-            p.inputVector = payload; 
+            p.inputVector = payload; // Store {x, y}
         }
         else if (type === 'PRESS') {
             p.isClicking = true;
@@ -209,13 +212,6 @@ export default class BaseGame {
             p.isClicking = false;
         }
 
-        // 2. TURN CHECK (Only Active Player can trigger Logic)
-        if (this.config.turnBased) {
-            const activeP = this.players[this.state.activePlayerIndex];
-            if (activeP.id !== playerId) return; 
-        }
-
-        // 3. TRIGGER GAME LOGIC
         this.onPlayerInput(p, type, payload); 
     }
 
