@@ -11,8 +11,6 @@ export default class AvatarMatch extends BaseGame {
         this.config.eliminateOnDeath = false;
         this.config.turnBased = true;
         this.config.turnBasedBackgroundColor = true;
-        
-        // Enable Touchpad Mode
         this.config.controllerType = 'TOUCHPAD';
 
         this.CARD_SIZE = 150;
@@ -35,13 +33,14 @@ export default class AvatarMatch extends BaseGame {
         this.generateBoard();
     }
 
-    // Handle Clicks via Virtual Cursor (Mobile) or Virtualized Mouse (Local)
     onPlayerInput(player, type) {
         if (!this.canClick) return;
+        
+        // Input coming from BaseGame is already filtered by Turn-Based logic,
+        // BUT we double check just in case BaseGame logic changes.
         if (player.idx !== this.state.activePlayerIndex) return;
 
         if (type === 'PRESS') {
-            // Check collision against this player's virtual cursor
             this.handleInputClick(player.cursorX, player.cursorY);
         }
     }
@@ -49,12 +48,11 @@ export default class AvatarMatch extends BaseGame {
     onDraw() {
         const p = this.p;
 
-        // Draw Cards
         for (let i = 0; i < this.cards.length; i++) {
             this.drawCard(this.cards[i]);
         }
 
-        // Local Mouse Logic
+        // Host Mouse Logic (for Local Players only)
         if (this.mode !== 'demo' && p.mouseIsPressed) {
             const activeP = this.players[this.state.activePlayerIndex];
             if(activeP.type === 'local') {
@@ -118,7 +116,6 @@ export default class AvatarMatch extends BaseGame {
         }
     }
 
-    // ... Standard setup helpers ...
     generateBoard() {
         const pCount = this.players.length;
         if (pCount <= 2) this.totalPairs = 12; else if (pCount === 3) this.totalPairs = 15; else this.totalPairs = 18;
