@@ -1,164 +1,456 @@
-/* src/games/AvatarMatch.js */
+/* src/games/BaseGame.js */
 
-import BaseGame from './BaseGame.js';
-import AvatarSystem from '../core/AvatarSystem.js';
+export default class BaseGame {
+    constructor(context, rules = {}) {
+        this.p = context.p5;
+        this.audio = context.audio;
+        this.ui = context.ui;
+        this.context = context;
 
-export default class AvatarMatch extends BaseGame {
-
-    onSetup() {
-        this.config.winCondition = 'CUSTOM';
-        this.config.livesPerRound = 1; 
-        this.config.eliminateOnDeath = false;
-        this.config.turnBased = true;
-        this.config.turnBasedBackgroundColor = true;
-        this.config.controllerType = 'TOUCHPAD';
-
-        this.CARD_SIZE = 150;
-        this.GAP = 20;
-        this.ANIM_SPEED = 0.15;
-
-        this.avatars = new AvatarSystem(this.p);
-        this.cards = [];
-        this.flippedCards = [];
-        this.matchesFound = 0;
-        this.totalPairs = 0;
-        this.canClick = true;
-    }
-
-    onRoundStart() {
-        this.cards = [];
-        this.flippedCards = [];
-        this.matchesFound = 0;
-        this.canClick = true;
-        this.generateBoard();
-    }
-
-    onPlayerInput(player, type) {
-        if (!this.canClick) return;
+        this.allPlayers = context.players.getActivePlayers();
         
-        // Input coming from BaseGame is already filtered by Turn-Based logic,
-        // BUT we double check just in case BaseGame logic changes.
-        if (player.idx !== this.state.activePlayerIndex) return;
+        this.mode = rules.mode || 'active';
+        this.config = {
+            winCondition: 'SCORE', 
+            winValue: rules.winValue || 5,
+            roundDuration: 60000, 
+            roundEndCriteria: 'NONE', 
+            scoreSorting: 'DESC', 
+            roundResetType: 'RESET_ALL', 
+            livesPerRound: 1,
+            eliminateOnDeath: true, 
+            autoLoop: true,
+            showRoundResultUI: true,
+            turnBased: false,
+            turnBasedBackgroundColor: false,
+            controllerType: rules.controllerType || 'ONE_BUTTON', 
+            ...rules
+        };
 
-        if (type === 'PRESS') {
-            this.handleInputClick(player.cursorX, player.cursorY);
-        }
-    }
-
-    onDraw() {
-        const p = this.p;
-
-        for (let i = 0; i < this.cards.length; i++) {
-            this.drawCard(this.cards[i]);
-        }
-
-        // Host Mouse Logic (for Local Players only)
-        if (this.mode !== 'demo' && p.mouseIsPressed) {
-            const activeP = this.players[this.state.activePlayerIndex];
-            if(activeP.type === 'local') {
-                const vx = (p.mouseX - this.transX) / this.scaleFactor;
-                const vy = (p.mouseY - this.transY) / this.scaleFactor;
-                this.handleInputClick(vx, vy);
-                p.mouseIsPressed = false; 
-            }
-        }
-    }
-
-    handleInputClick(vx, vy) {
-        if (!this.canClick) return;
-
-        for (let i = this.cards.length - 1; i >= 0; i--) {
-            const c = this.cards[i];
-            if (c.isMatched || c.isFlipped) continue;
+        this.players = this.allPlayers.map(p => ({ 
+            ...p, 
+            score: 0, 
+            lives: this.config.livesPerRound,
+            isEliminated: false,
+            isPermEliminated: false,
+            wasPressed: false,
             
-            const half = this.CARD_SIZE / 2;
-            if (vx > c.x - half && vx < c.x + half && vy > c.y - half && vy < c.y + half) {
-                this.flipCard(c);
-                break;
-            }
+            // --- CURSOR STATE ---
+            cursorX: this.V_WIDTH / 2,
+            cursorY: this.V_HEIGHT / 2,
+            isClicking: false,
+            inputVector: { x: 0, y: 0 } // Stores the continuous D-Pad direction
+        }));
+
+        this.state = {
+            phase: 'SETUP',
+            round: 0,
+            activePlayerIndex: 0,
+            winner: null,
+            isRoundActive: false,
+            timer: 0 
+        };
+
+        this.V_WIDTH = 1920;
+        this.V_HEIGHT = 1200;
+        this.CX = this.V_WIDTH / 2;
+        this.CY = this.V_HEIGHT / 2;
+        this.scaleFactor = 1;
+        this.transX = 0;
+        this.transY = 0;
+        this.shakeTimer = 0;
+        
+        this.bgColor = [240, 234, 214];
+        this.targetBgColor = [240, 234, 214];
+
+        this.isDestroyed = false;
+        this.timerLastTick = 0;
+    }
+
+    setup() {
+        if (this.isDestroyed) return;
+
+        const parent = this.p.canvas.parentElement;
+        this.p.createCanvas(parent.clientWidth, parent.clientHeight);
+        this.calculateLayout();
+
+        this.state.round = 0;
+        this.state.winner = null;
+        this.players.forEach(p => {
+            p.score = 0;
+            p.isPermEliminated = false;
+            p.cursorX = this.CX;
+            p.cursorY = this.CY;
+            p.inputVector = { x: 0, y: 0 };
+        });
+
+        if (this.audio && this.mode !== 'demo') this.audio.setTrack('game');
+
+        this.onSetup(); 
+        this.updateUI(); 
+        this.startNewRound();
+        
+        if (this.mode !== 'demo') {
+            window.dispatchEvent(new CustomEvent('game-state-change', { detail: 'PLAYING' }));
         }
     }
 
-    flipCard(card) {
-        this.playSound('click');
-        if (this.flippedCards.length >= 2) return;
-        card.flipState = 'flipping_in';
-        this.flippedCards.push(card);
-    }
-
-    checkMatch() {
-        const c1 = this.flippedCards[0];
-        const c2 = this.flippedCards[1];
-
-        if (c1.data.id === c2.data.id) {
-            this.canClick = false;
-            setTimeout(() => {
-                const player = this.players[this.state.activePlayerIndex];
-                c1.isMatched = true; c2.isMatched = true;
-                c1.matchOwner = player.color; c2.matchOwner = player.color;
-                this.playSound('win');
-                player.score++;
-                this.updateUI();
-                this.flippedCards = [];
-                this.matchesFound++;
-                this.canClick = true;
-                if (this.matchesFound === this.totalPairs) this.finishGame();
-            }, 400);
+    draw() {
+        if (this.isDestroyed) return;
+        const p = this.p;
+        
+        if (this.state.phase === 'PLAYING' && this.config.winCondition === 'TIME') {
+            const now = p.millis();
+            const delta = now - this.timerLastTick;
+            this.timerLastTick = now;
+            this.state.timer -= delta;
+            if (this.state.timer <= 0) {
+                this.state.timer = 0;
+                this.handleTimeUp();
+            }
         } else {
-            this.canClick = false;
-            setTimeout(() => {
-                this.playSound('bump');
-                c1.flipState = 'flipping_in'; c2.flipState = 'flipping_in';
-                this.flippedCards = [];
-                this.nextTurn();
-                this.canClick = true;
-            }, 800);
+            this.timerLastTick = p.millis();
         }
-    }
 
-    generateBoard() {
-        const pCount = this.players.length;
-        if (pCount <= 2) this.totalPairs = 12; else if (pCount === 3) this.totalPairs = 15; else this.totalPairs = 18;
-        const pairs = [];
-        const usedConfigs = new Set();
-        for (let i = 0; i < this.totalPairs; i++) {
-            let config; let hash; let attempts = 0;
-            do { config = this.generateRandomConfig(i); hash = `${config.color}-${config.accessory}-${config.variant}`; attempts++; } while (usedConfigs.has(hash) && attempts < 200);
-            usedConfigs.add(hash); pairs.push({ ...config }); pairs.push({ ...config });
+        // --- CURSOR PHYSICS LOOP ---
+        // Apply movement vector every frame for smooth sliding
+        if (this.config.controllerType === 'TOUCHPAD') {
+            this.players.forEach(pl => {
+                if(pl.inputVector.x !== 0 || pl.inputVector.y !== 0) {
+                    const speed = 15;
+                    pl.cursorX += pl.inputVector.x * speed;
+                    pl.cursorY += pl.inputVector.y * speed;
+                    // Clamp
+                    pl.cursorX = Math.max(0, Math.min(this.V_WIDTH, pl.cursorX));
+                    pl.cursorY = Math.max(0, Math.min(this.V_HEIGHT, pl.cursorY));
+                }
+            });
         }
-        this.shuffle(pairs);
-        const cols = 6; const rows = Math.ceil(pairs.length / cols);
-        const totalW = cols * this.CARD_SIZE + (cols - 1) * this.GAP;
-        const totalH = rows * this.CARD_SIZE + (rows - 1) * this.GAP;
-        const startX = (this.V_WIDTH - totalW) / 2 + this.CARD_SIZE / 2;
-        const startY = (this.V_HEIGHT - totalH) / 2 + this.CARD_SIZE / 2;
-        let idx = 0;
-        for (let y = 0; y < rows; y++) {
-            for (let x = 0; x < cols; x++) {
-                if (idx >= pairs.length) break;
-                this.cards.push({ x: startX + x * (this.CARD_SIZE + this.GAP), y: startY + y * (this.CARD_SIZE + this.GAP), data: pairs[idx], isFlipped: false, isMatched: false, matchOwner: null, scaleX: 1, flipState: 'back' });
-                idx++;
-            }
+
+        if (this.config.turnBasedBackgroundColor && this.mode !== 'demo') {
+            this.bgColor[0] = p.lerp(this.bgColor[0], this.targetBgColor[0], 0.05);
+            this.bgColor[1] = p.lerp(this.bgColor[1], this.targetBgColor[1], 0.05);
+            this.bgColor[2] = p.lerp(this.bgColor[2], this.targetBgColor[2], 0.05);
+            p.background(this.bgColor);
+        } else {
+            p.background(this.getBgColor());
         }
-    }
 
-    generateRandomConfig(id) {
-        const colors = ['#FF6B6B', '#4D96FF', '#FFD93D', '#6BCB77', '#A66CFF', '#FF9F43', '#54a0ff'];
-        const accs = AvatarSystem.ACCESSORIES;
-        return { color: this.p.random(colors), accessory: this.p.random(accs), variant: this.p.random(['default', 'feminine']), id: id };
-    }
+        p.push();
+        let sx = 0, sy = 0;
+        if (this.shakeTimer > 0) {
+            this.shakeTimer--;
+            const damp = this.shakeTimer / 20;
+            sx = p.random(-1, 1) * 20 * damp;
+            sy = p.random(-1, 1) * 20 * damp;
+        }
+        p.translate(this.transX + sx, this.transY + sy);
+        p.scale(this.scaleFactor);
 
-    drawCard(card) {
-        const p = this.p; p.push(); p.translate(card.x, card.y);
-        if (card.flipState === 'flipping_in') { card.scaleX -= this.ANIM_SPEED; if (card.scaleX <= 0) { card.scaleX = 0; card.isFlipped = !card.isFlipped; card.flipState = 'flipping_out'; } } 
-        else if (card.flipState === 'flipping_out') { card.scaleX += this.ANIM_SPEED; if (card.scaleX >= 1) { card.scaleX = 1; card.flipState = 'idle'; if (this.flippedCards.length === 2 && card.isFlipped) this.checkMatch(); } }
-        p.scale(card.scaleX, 1); p.noStroke(); p.fill(0, 30); p.rectMode(p.CENTER); p.rect(6, 6, this.CARD_SIZE, this.CARD_SIZE, 16);
-        if (!card.isFlipped && !card.isMatched) { p.fill('#fff'); p.rect(0, 0, this.CARD_SIZE, this.CARD_SIZE, 16); p.fill('#f0f0f0'); p.circle(0, 0, 90); p.fill('#ccc'); p.textSize(70); p.textAlign(p.CENTER, p.CENTER); p.textStyle(p.BOLD); p.text('?', 0, 6); } 
-        else { if (card.isMatched) { p.fill(card.matchOwner || '#fff'); p.stroke(255); p.strokeWeight(6); } else { p.fill('#fff'); p.noStroke(); } p.rect(0, 0, this.CARD_SIZE, this.CARD_SIZE, 16); this.avatars.draw({ x: 0, y: 15, size: 90, color: card.data.color, variant: card.data.variant, accessory: card.data.accessory, expression: card.isMatched ? 'happy' : 'idle' }); }
+        if (this.mode === 'demo' && this.state.phase === 'PLAYING') {
+            this.runDemoAI();
+        }
+
+        this.onDraw();
+        
+        if (this.mode !== 'demo' && this.config.controllerType === 'TOUCHPAD') {
+            this.drawCursors();
+        }
+
         p.pop();
     }
 
-    shuffle(array) { for (let i = array.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [array[i], array[j]] = [array[j], array[i]]; } }
+    drawCursors() {
+        const p = this.p;
+        this.players.forEach(pl => {
+            // HIDE LOCAL CURSORS (Real mouse exists)
+            if(pl.isEliminated || pl.type === 'local') return;
+
+            p.push();
+            p.translate(pl.cursorX, pl.cursorY);
+            p.fill(pl.color);
+            p.stroke(255); p.strokeWeight(3);
+            
+            p.beginShape();
+            p.vertex(0, 0); p.vertex(0, 35); p.vertex(10, 25);
+            p.vertex(20, 38); p.vertex(26, 32); p.vertex(16, 20); p.vertex(28, 20);
+            p.endShape(p.CLOSE);
+            
+            if(pl.isClicking) {
+                p.noFill(); p.stroke(pl.color); p.strokeWeight(3);
+                p.circle(5, 5, 50);
+            }
+            p.pop();
+        });
+    }
+
+    updateUI() {
+        if (!this.isDestroyed && this.ui) {
+            this.ui.updateScoreboard(this.players);
+        }
+    }
+
+    handleInput(playerId, type, payload) {
+        if (this.isDestroyed || this.state.phase !== 'PLAYING') return;
+
+        const p = this.players.find(pl => pl.id === playerId);
+        if (!p || p.isEliminated || p.isPermEliminated) return;
+        
+        if (this.config.turnBased) {
+            const activeP = this.players[this.state.activePlayerIndex];
+            if (activeP.id !== playerId) return;
+        }
+
+        // --- STORE VECTOR ---
+        if (type === 'VECTOR' && payload) {
+            p.inputVector = payload; // Store {x, y}
+        }
+        else if (type === 'PRESS') {
+            p.isClicking = true;
+        }
+        else if (type === 'RELEASE') {
+            p.isClicking = false;
+        }
+
+        this.onPlayerInput(p, type, payload); 
+    }
+
+    simulateInput(playerIndex, action) {
+        const p = this.players[playerIndex];
+        if (p) this.onPlayerInput(p, action);
+    }
     
-    runDemoAI() { if (this.p.frameCount % 60 === 0 && this.flippedCards.length < 2) { const available = this.cards.filter(c => !c.isMatched && !c.isFlipped); if (available.length > 0) { const pick = this.p.random(available); this.flipCard(pick); } } }
+    runDemoAI() {}
+
+    startNewRound() {
+        if (this.isDestroyed) return;
+
+        this.state.phase = 'INTRO';
+        this.state.round++;
+        this.state.isRoundActive = true;
+        this.state.timer = this.config.roundDuration; 
+        
+        this.players.forEach(p => {
+            if (this.config.roundResetType === 'ELIMINATION' && p.isPermEliminated) {
+                p.isEliminated = true;
+                return;
+            }
+            p.lives = this.config.livesPerRound;
+            p.isEliminated = false;
+            p.statusType = (this.config.livesPerRound > 1) ? 'hearts' : 'score';
+            p.customStatus = (this.config.livesPerRound > 1) ? p.lives : undefined;
+            p.isClicking = false;
+            p.inputVector = {x:0, y:0};
+        });
+
+        if (this.config.turnBased) {
+            this.validateTurn(true); 
+        }
+
+        if (this.config.roundResetType === 'ELIMINATION') {
+            const survivors = this.players.filter(p => !p.isPermEliminated);
+            if (survivors.length <= 1) {
+                this.finishGame(); 
+                return;
+            }
+        }
+        
+        this.updateUI();
+        this.onRoundStart();
+
+        if (this.mode !== 'demo') {
+            window.dispatchEvent(new CustomEvent('game-state-change', { detail: 'PLAYING' }));
+        }
+
+        const delay = this.mode === 'demo' ? 100 : 800;
+        setTimeout(() => {
+            if (!this.isDestroyed) {
+                this.state.phase = 'PLAYING';
+                this.timerLastTick = this.p.millis();
+            }
+        }, delay);
+    }
+
+    nextTurn() {
+        if (!this.config.turnBased || this.isDestroyed) return;
+        let attempts = 0;
+        const total = this.players.length;
+        do {
+            this.state.activePlayerIndex = (this.state.activePlayerIndex + 1) % total;
+            attempts++;
+        } while (
+            (this.players[this.state.activePlayerIndex].isEliminated || 
+             this.players[this.state.activePlayerIndex].isPermEliminated) && 
+            attempts < total
+        );
+        this.updateTurnVisuals();
+    }
+
+    validateTurn(randomize = false) {
+        const activePlayers = this.players.filter(p => !p.isEliminated && !p.isPermEliminated);
+        if (activePlayers.length === 0) return;
+        const current = this.players[this.state.activePlayerIndex];
+        if (randomize || current.isEliminated || current.isPermEliminated) {
+            const nextP = activePlayers[Math.floor(Math.random() * activePlayers.length)];
+            this.state.activePlayerIndex = this.players.indexOf(nextP);
+            this.updateTurnVisuals();
+        }
+    }
+
+    updateTurnVisuals() {
+        if (this.isDestroyed) return;
+        const current = this.players[this.state.activePlayerIndex];
+        if (!current) return;
+        if (this.mode !== 'demo') this.ui.showTurnMessage(`${current.name}'s Turn!`, current.color);
+        if (this.config.turnBasedBackgroundColor) this.targetBgColor = this.hexToRgb(current.color);
+    }
+
+    eliminatePlayer(playerIdx) {
+        if (!this.state.isRoundActive || this.state.phase !== 'PLAYING' || this.isDestroyed) return;
+        const p = this.players[playerIdx];
+        if (!p || p.isEliminated) return;
+        p.lives--;
+        if (this.config.livesPerRound > 1) {
+            p.customStatus = p.lives; 
+            this.updateUI();
+        }
+        if (p.lives <= 0) {
+            if (this.config.eliminateOnDeath) {
+                p.isEliminated = true;
+                if (this.config.roundResetType === 'ELIMINATION') {
+                    p.isPermEliminated = true;
+                    if (this.checkWinCondition()) {
+                        setTimeout(() => this.finishGame(), 1000);
+                        return;
+                    }
+                }
+                this.onPlayerEliminated(p);
+            }
+            this.checkRoundEnd();
+        }
+    }
+
+    handleTimeUp() {
+        const sorted = [...this.players].sort((a, b) => b.score - a.score);
+        this.endRound(sorted[0]);
+    }
+
+    checkRoundEnd() {
+        if (this.isDestroyed) return;
+        const active = this.players.filter(p => !p.isEliminated);
+        
+        if (this.config.roundEndCriteria === 'SURVIVAL' && active.length <= 1) {
+            this.endRound(active.length === 1 ? active[0] : null);
+        } else if (this.config.roundEndCriteria === 'ALL_DEAD' && active.length === 0) {
+            const sorted = [...this.players].sort((a, b) => b.score - a.score);
+            this.endRound(sorted[0]); 
+        }
+    }
+
+    endRound(roundWinner) {
+        if (!this.state.isRoundActive || this.isDestroyed) return;
+        this.state.isRoundActive = false;
+        this.state.phase = 'ROUND_OVER';
+        
+        if (this.mode !== 'demo') {
+            window.dispatchEvent(new CustomEvent('game-state-change', { detail: 'ROUND_OVER' }));
+        }
+        
+        if (roundWinner && this.mode !== 'demo') {
+            if (this.config.roundEndCriteria === 'SURVIVAL') {
+                roundWinner.score++;
+            }
+            this.playSound('win');
+        }
+
+        this.updateUI();
+        this.onRoundEnd(); 
+
+        setTimeout(() => {
+            if (this.isDestroyed) return;
+            
+            if (this.checkWinCondition()) {
+                this.finishGame();
+            } else if (this.config.autoLoop) {
+                if (this.mode !== 'demo' && this.config.showRoundResultUI) {
+                    const title = roundWinner ? `${roundWinner.name} Wins!` : "Draw";
+                    this.ui.showMessage(title, "Next Round", "Next", () => this.startNewRound());
+                } else {
+                    setTimeout(() => this.startNewRound(), 2000);
+                }
+            }
+        }, 500);
+    }
+
+    checkWinCondition() {
+        if (this.mode === 'demo') return false; 
+        const sorted = [...this.players].sort((a, b) => {
+            return this.config.scoreSorting === 'ASC' ? a.score - b.score : b.score - a.score;
+        });
+        const leader = sorted[0];
+        if (this.config.winCondition === 'SCORE' && leader.score >= this.config.winValue) {
+            this.state.winner = leader;
+            return true;
+        }
+        if (this.config.winCondition === 'ROUNDS' && this.state.round >= this.config.winValue) {
+            this.state.winner = leader;
+            return true;
+        }
+        if (this.config.winCondition === 'SURVIVAL') {
+            const survivors = this.players.filter(p => !p.isPermEliminated);
+            if (survivors.length <= 1) {
+                this.state.winner = survivors[0] || leader;
+                return true;
+            }
+        }
+        if (this.config.winCondition === 'TIME') return false; 
+        return false;
+    }
+
+    finishGame() {
+        if (this.isDestroyed) return;
+        this.state.phase = 'GAME_OVER';
+        
+        if (this.mode !== 'demo') {
+            window.dispatchEvent(new CustomEvent('game-state-change', { detail: 'GAME_OVER' }));
+        }
+
+        if (this.audio && this.mode !== 'demo') this.audio.setTrack('victory');
+        
+        if (this.mode === 'tournament' && this.onGameComplete) {
+            this.onGameComplete(this.players); 
+        } else if (this.mode === 'active') {
+            this.ui.showPodium(this.players, "Play Again", () => this.setup());
+        } else {
+            this.setup();
+        }
+    }
+
+    destroy() {
+        this.isDestroyed = true;
+    }
+
+    calculateLayout() {
+        const w = this.p.width;
+        const h = this.p.height;
+        this.scaleFactor = Math.min(w / this.V_WIDTH, h / this.V_HEIGHT);
+        this.transX = (w - (this.V_WIDTH * this.scaleFactor)) / 2;
+        this.transY = (h - (this.V_HEIGHT * this.scaleFactor)) / 2;
+    }
+
+    hexToRgb(hex) {
+        const bigint = parseInt(hex.replace('#', ''), 16);
+        return [(bigint >> 16) & 255, (bigint >> 8) & 255, bigint & 255];
+    }
+
+    shake(intensity, duration = 20) { this.shakeTimer = duration; }
+    playSound(name) { if (this.audio && this.mode !== 'demo') this.audio.play(name); }
+
+    onSetup() {}
+    onRoundStart() {}
+    onRoundEnd() {}
+    onPlayerEliminated(player) {}
+    onPlayerInput(player, type, payload) {} 
+    onDraw() {}
+    getBgColor() { return '#F0EAD6'; }
 }
