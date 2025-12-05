@@ -27,7 +27,6 @@ export default class BaseGame {
             ...rules
         };
 
-        // --- TUNING: CURSOR SPEED ---
         this.CURSOR_SPEED = 6; 
 
         this.players = this.allPlayers.map(p => ({ 
@@ -40,6 +39,7 @@ export default class BaseGame {
             cursorX: this.V_WIDTH / 2,
             cursorY: this.V_HEIGHT / 2,
             isClicking: false,
+            clickSafetyTimer: 0, // NEW: Prevents stuck ripples
             inputVector: { x: 0, y: 0 }
         }));
 
@@ -100,30 +100,40 @@ export default class BaseGame {
         if (this.isDestroyed) return;
         const p = this.p;
         
+        const now = p.millis();
         if (this.state.phase === 'PLAYING' && this.config.winCondition === 'TIME') {
-            const now = p.millis();
             const delta = now - this.timerLastTick;
-            this.timerLastTick = now;
             this.state.timer -= delta;
             if (this.state.timer <= 0) {
                 this.state.timer = 0;
                 this.handleTimeUp();
             }
-        } else {
-            this.timerLastTick = p.millis();
         }
+        this.timerLastTick = now;
 
-        // Apply Cursor Physics
-        if (this.config.controllerType === 'TOUCHPAD') {
-            this.players.forEach(pl => {
+        // --- UPDATE CURSORS & SAFETY CHECKS ---
+        this.players.forEach(pl => {
+            // Physics
+            if (this.config.controllerType === 'TOUCHPAD') {
                 if(pl.inputVector.x !== 0 || pl.inputVector.y !== 0) {
                     pl.cursorX += pl.inputVector.x * this.CURSOR_SPEED;
                     pl.cursorY += pl.inputVector.y * this.CURSOR_SPEED;
                     pl.cursorX = Math.max(0, Math.min(this.V_WIDTH, pl.cursorX));
                     pl.cursorY = Math.max(0, Math.min(this.V_HEIGHT, pl.cursorY));
                 }
-            });
-        }
+            }
+            
+            // Stuck Ripple Safety Valve
+            if (pl.isClicking) {
+                pl.clickSafetyTimer += (p.deltaTime || 16);
+                if (pl.clickSafetyTimer > 2000) { // If held for > 2 seconds, force release
+                    pl.isClicking = false;
+                    pl.clickSafetyTimer = 0;
+                }
+            } else {
+                pl.clickSafetyTimer = 0;
+            }
+        });
 
         if (this.config.turnBasedBackgroundColor && this.mode !== 'demo') {
             this.bgColor[0] = p.lerp(this.bgColor[0], this.targetBgColor[0], 0.05);
@@ -175,7 +185,7 @@ export default class BaseGame {
             
             if(pl.isClicking) {
                 p.noFill(); p.stroke(pl.color); p.strokeWeight(3);
-                p.circle(5, 5, 60); // Larger Ripple
+                p.circle(5, 5, 60); 
             }
             p.pop();
         });
@@ -193,14 +203,17 @@ export default class BaseGame {
         const p = this.players.find(pl => pl.id === playerId);
         if (!p || p.isEliminated || p.isPermEliminated) return;
         
-        // Note: We removed the turn-based blocking here so cursors can always move.
-        // Games must enforce turns for actions inside onPlayerInput.
+        if (this.config.turnBased) {
+            const activeP = this.players[this.state.activePlayerIndex];
+            if (activeP.id !== playerId) return;
+        }
 
         if (type === 'VECTOR' && payload) {
             p.inputVector = payload; 
         }
         else if (type === 'PRESS') {
             p.isClicking = true;
+            p.clickSafetyTimer = 0;
         }
         else if (type === 'RELEASE') {
             p.isClicking = false;
