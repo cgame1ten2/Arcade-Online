@@ -65,17 +65,34 @@ function init() {
                 hostBtnRef.style.borderColor = '#27ae60';
                 hostBtnRef.onclick = null; 
                 
-                // --- NEW: Generate QR Code ---
-                // Construct URL: current_host/mobile.html?room=CODE
-                const baseUrl = window.location.href.substring(0, window.location.href.lastIndexOf('/'));
+                // --- FIX: QR Code Logic ---
+                // 1. Calculate URL
+                const baseUrl = window.location.href.split('?')[0].split('#')[0].replace(/\/$/, "");
                 const joinUrl = `${baseUrl}/mobile.html?room=${code}`;
                 
-                const qrDiv = document.getElementById('qr-container');
-                qrDiv.innerHTML = ''; // Clear old
-                new QRCode(qrDiv, { text: joinUrl, width: 80, height: 80 });
-                qrDiv.style.display = 'block';
-                
-                ui.showMessage(`Room Code: ${code}`, "Scan QR or visit mobile.html", "OK", () => ui.hideMessage());
+                // 2. Show Message with a placeholder DIV for the QR code
+                ui.showMessage(
+                    `Room Code: ${code}`, 
+                    `Scan to Join:<br><div id="host-qr-target" style="display:flex; justify-content:center; margin:15px auto; background:white; padding:10px; width:fit-content; border-radius:8px;"></div>`, 
+                    "OK", 
+                    () => ui.hideMessage()
+                );
+
+                // 3. Generate QR Code into that placeholder after a brief delay (to ensure DOM is ready)
+                setTimeout(() => {
+                    const target = document.getElementById('host-qr-target');
+                    if(target && window.QRCode) {
+                        target.innerHTML = ''; // Clear previous if any
+                        new QRCode(target, {
+                            text: joinUrl,
+                            width: 128,
+                            height: 128,
+                            colorDark : "#2c3e50",
+                            colorLight : "#ffffff",
+                            correctLevel : QRCode.CorrectLevel.H
+                        });
+                    }
+                }, 100);
             };
         };
         mainHeader.insertBefore(hostBtn, setupBtn);
@@ -264,7 +281,9 @@ function showTournamentSetup() {
 }
 
 function setupLobby() {
-    // Only listener attachment
+    setupBtn.onclick = () => { audio.play('click'); audio.setTrack('config'); network.broadcastState('LOBBY', 'IDLE'); renderVisualLobby(); setupOverlay.classList.remove('hidden'); pauseDemos(); };
+    savePlayersBtn.onclick = () => { audio.play('click'); audio.setTrack('lobby'); setupOverlay.classList.add('hidden'); cleanupLobby(); renderHub(); };
+    addPlayerBtn.onclick = () => { audio.play('click'); players.addPlayer('local'); renderVisualLobby(); };
 }
 
 function cleanupLobby() { lobbyInstances.forEach(p => p.remove()); lobbyInstances = []; }
@@ -272,25 +291,14 @@ function cleanupLobby() { lobbyInstances.forEach(p => p.remove()); lobbyInstance
 function renderVisualLobby() {
     cleanupLobby();
     const controls = document.querySelector('.lobby-controls');
-    
-    // Check for QR Container creation if init didn't create it
-    if(!document.getElementById('qr-container')) {
-        const qr = document.createElement('div');
-        qr.id = 'qr-container';
-        qr.style.cssText = "display:none; background:white; padding:5px; border-radius:8px; margin-right:15px;";
-        document.querySelector('.lobby-header').insertBefore(qr, controls);
-    }
-
     const existingSettings = document.querySelector('.lobby-settings');
     if (existingSettings) existingSettings.remove();
-    
     const settingsDiv = document.createElement('div');
     settingsDiv.className = 'lobby-settings';
     settingsDiv.innerHTML = `<button id="toggle-music" class="setting-toggle ${audio.musicEnabled ? 'active' : ''}">Music: ${audio.musicEnabled ? 'ON' : 'OFF'}</button><button id="toggle-sfx" class="setting-toggle ${audio.sfxEnabled ? 'active' : ''}">SFX: ${audio.sfxEnabled ? 'ON' : 'OFF'}</button>`;
     controls.insertBefore(settingsDiv, controls.firstChild);
     document.getElementById('toggle-music').onclick = (e) => { const newState = !audio.musicEnabled; audio.toggleMusic(newState); e.target.textContent = `Music: ${newState ? 'ON' : 'OFF'}`; e.target.classList.toggle('active', newState); audio.play('click'); if (newState) audio.setTrack('config'); };
     document.getElementById('toggle-sfx').onclick = (e) => { const newState = !audio.sfxEnabled; audio.toggleSfx(newState); e.target.textContent = `SFX: ${newState ? 'ON' : 'OFF'}`; e.target.classList.toggle('active', newState); audio.play('click'); };
-    
     playerConfigGrid.innerHTML = '';
     const activePlayers = players.getActivePlayers();
     activePlayers.forEach((p, index) => {
