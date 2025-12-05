@@ -4,23 +4,19 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Wonder Controller</title>
-    
     <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/p5@1.9.0/lib/p5.min.js"></script>
-
     <style>
-        /* --- GLOBAL RESET --- */
-        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-        body { margin: 0; padding: 0; background: #2c3e50; font-family: 'Segoe UI', sans-serif; overflow: hidden; touch-action: none; user-select: none; color: white; width: 100vw; height: 100vh; position: fixed; }
+        body { margin: 0; padding: 0; background: #2c3e50; font-family: 'Segoe UI', Roboto, sans-serif; overflow: hidden; touch-action: none; user-select: none; color: white; width: 100vw; height: 100vh; position: fixed; }
         .screen { display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; flex-direction: column; align-items: center; justify-content: center; background: #2c3e50; z-index: 10; }
         .active { display: flex !important; }
         .menu-btn { position: fixed; top: 15px; right: 15px; background: rgba(255,255,255,0.2); border: 2px solid rgba(255,255,255,0.3); color: white; font-size: 24px; width: 44px; height: 44px; border-radius: 50%; cursor: pointer; z-index: 999; display: flex; align-items: center; justify-content: center; }
-
-        /* --- LOGIN --- */
+        
+        #screen-login, #screen-disconnected { background: #2c3e50; color: white; }
         input.code-input { font-size: 30px; padding: 15px; text-align: center; text-transform: uppercase; border-radius: 12px; border: none; background: rgba(255,255,255,0.1); color: white; font-weight: bold; width: 220px; display: block; margin-bottom: 20px; }
         button.action-btn { font-size: 20px; padding: 15px 30px; background: #2ecc71; border: none; color: white; border-radius: 12px; font-weight: bold; width: 220px; }
         
-        /* --- LOBBY --- */
+        #screen-lobby { background: #2c3e50; }
         .player-card { background: white; border-radius: 16px; padding: 20px; width: 90%; max-width: 350px; display: flex; flex-direction: column; gap: 15px; color: #333; }
         .setup-preview { width: 100%; height: 200px; background: #eee; border-radius: 12px; display: flex; justify-content: center; align-items: center; }
         .name-input { width: 100%; padding: 10px; font-size: 1.2rem; text-align: center; border: 1px solid #ccc; border-radius: 8px; }
@@ -29,36 +25,19 @@
         .opts-row { display: flex; gap: 10px; }
         .opt-btn { flex: 1; padding: 12px; background: #eee; border: none; border-radius: 8px; font-weight: bold; color: #333; font-size: 0.9rem; }
         
-        /* --- CONTROLLER --- */
+        #screen-controller { background: #2c3e50; }
         #btn-big { width: 85vw; height: 60vh; background: #e74c3c; border-radius: 30px; border: 8px solid rgba(0,0,0,0.1); display: flex; align-items: center; justify-content: center; flex-direction: column; transition: transform 0.05s; }
         #btn-big:active { transform: scale(0.96); }
 
-        /* --- TOUCHPAD (8-WAY KEYPAD) --- */
         #screen-touchpad { background: #34495e; }
         #touch-click-zone { flex-basis: 30%; width: 100%; background: #27ae60; border-bottom: 8px solid rgba(0,0,0,0.2); display: flex; align-items: center; justify-content: center; flex-direction: column; box-shadow: inset 0 -10px 20px rgba(0,0,0,0.1); position: relative; overflow: hidden; }
         #touch-click-zone:active { filter: brightness(0.9); transform: translateY(2px); }
         #touch-move-zone { flex-basis: 70%; width: 100%; background: #2c3e50; display: flex; align-items: center; justify-content: center; }
-
-        .dpad-grid {
-            display: grid;
-            grid-template-columns: repeat(3, 85px);
-            grid-template-rows: repeat(3, 85px);
-            gap: 8px;
-            transform: scale(0.9); /* Fit on smaller screens */
-        }
-
-        .dpad-btn {
-            background: #ecf0f1; border-radius: 12px; border: 2px solid #bdc3c7;
-            display: flex; align-items: center; justify-content: center;
-            font-size: 24px; color: #2c3e50; font-weight: bold;
-            box-shadow: 0 4px 0 #95a5a6; transition: transform 0.05s, box-shadow 0.05s;
-        }
+        .dpad-grid { display: grid; grid-template-columns: repeat(3, 85px); grid-template-rows: repeat(3, 85px); gap: 8px; transform: scale(0.9); }
+        .dpad-btn { background: #ecf0f1; border-radius: 12px; border: 2px solid #bdc3c7; display: flex; align-items: center; justify-content: center; font-size: 24px; color: #2c3e50; font-weight: bold; box-shadow: 0 4px 0 #95a5a6; transition: transform 0.05s, box-shadow 0.05s; }
         .dpad-btn:active { transform: translateY(4px); box-shadow: 0 0 0 #95a5a6; background: #bdc3c7; }
-        
-        /* Center is empty/label */
         .dpad-center { display: flex; align-items: center; justify-content: center; color: rgba(255,255,255,0.2); font-weight: bold; font-size: 0.8rem; text-align: center; }
 
-        /* --- MENU --- */
         #overlay-menu { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); z-index: 2000; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 15px; }
         .menu-option { background: white; border: none; width: 80%; padding: 20px; font-size: 1.2rem; font-weight: bold; border-radius: 12px; color: #333; }
         .menu-option.danger { background: #e74c3c; color: white; }
@@ -70,7 +49,7 @@
 <body>
     <button id="global-menu-btn" class="menu-btn hidden" onclick="toggleMenu()">⚙️</button>
 
-    <!-- LOGIN -->
+    <!-- 1. LOGIN -->
     <div id="screen-login" class="screen active">
         <h1 style="color:#f1c40f; margin-bottom:30px;">WONDER<br>ARCADE</h1>
         <input type="text" id="room-code" class="code-input" placeholder="CODE" maxlength="4">
@@ -78,7 +57,7 @@
         <p id="status" style="margin-top: 20px; color: #f1c40f; opacity: 0;">Connecting...</p>
     </div>
 
-    <!-- LOBBY -->
+    <!-- 2. LOBBY -->
     <div id="screen-lobby" class="screen">
         <div class="player-card">
             <div id="lobby-avatar" class="setup-preview"></div>
@@ -92,7 +71,7 @@
         <div style="margin-top:15px; opacity:0.5;">Look at TV for preview</div>
     </div>
 
-    <!-- BUTTON -->
+    <!-- 3. BUTTON CONTROLLER -->
     <div id="screen-controller" class="screen">
         <div id="btn-big">
             <div id="btn-avatar-target" style="pointer-events: none;"></div>
@@ -100,7 +79,7 @@
         </div>
     </div>
 
-    <!-- 8-WAY KEYPAD -->
+    <!-- 4. D-PAD CONTROLLER -->
     <div id="screen-touchpad" class="screen">
         <div id="touch-click-zone">
             <div id="touch-avatar-target" style="pointer-events: none;"></div>
@@ -108,17 +87,12 @@
         </div>
         <div id="touch-move-zone">
             <div class="dpad-grid">
-                <!-- Top Row -->
                 <div class="dpad-btn" onmousedown="sendVec(-0.7, -0.7)" ontouchstart="sendVec(-0.7, -0.7, event)">↖</div>
                 <div class="dpad-btn" onmousedown="sendVec(0, -1)" ontouchstart="sendVec(0, -1, event)">▲</div>
                 <div class="dpad-btn" onmousedown="sendVec(0.7, -0.7)" ontouchstart="sendVec(0.7, -0.7, event)">↗</div>
-                
-                <!-- Middle Row -->
                 <div class="dpad-btn" onmousedown="sendVec(-1, 0)" ontouchstart="sendVec(-1, 0, event)">◀</div>
                 <div class="dpad-center">HOLD<br>TO<br>MOVE</div>
                 <div class="dpad-btn" onmousedown="sendVec(1, 0)" ontouchstart="sendVec(1, 0, event)">▶</div>
-                
-                <!-- Bottom Row -->
                 <div class="dpad-btn" onmousedown="sendVec(-0.7, 0.7)" ontouchstart="sendVec(-0.7, 0.7, event)">↙</div>
                 <div class="dpad-btn" onmousedown="sendVec(0, 1)" ontouchstart="sendVec(0, 1, event)">▼</div>
                 <div class="dpad-btn" onmousedown="sendVec(0.7, 0.7)" ontouchstart="sendVec(0.7, 0.7, event)">↘</div>
@@ -126,9 +100,16 @@
         </div>
     </div>
 
+    <!-- 5. DISCONNECTED -->
+    <div id="screen-disconnected" class="screen">
+        <h2 style="color:#e74c3c;">DISCONNECTED</h2>
+        <p style="opacity:0.7;">Connection to Host lost.</p>
+        <button class="action-btn" onclick="location.reload()" style="margin-top:20px;">RECONNECT</button>
+    </div>
+
     <!-- MENU -->
     <div id="overlay-menu" class="hidden">
-        <div class="menu-header">GAME MENU</div>
+        <h2 style="color:white; margin-bottom:20px;">GAME MENU</h2>
         <div id="game-selector-container" class="hidden" style="width:100%; display:flex; flex-direction:column; align-items:center;">
             <select id="game-list" class="game-select"><option value="" disabled selected>Select Game...</option></select>
             <button class="menu-option primary" onclick="startGameFromMenu()">Start Game</button>
@@ -160,12 +141,13 @@
                 conn = peer.connect(`wonder-${code}`);
                 conn.on('open', () => { document.getElementById('status').innerText = "Authenticating..."; });
                 conn.on('data', handleData);
-                conn.on('close', () => { alert("Host Disconnected"); location.reload(); });
+                conn.on('close', () => { showScreen('screen-disconnected'); });
             });
         };
 
         function handleData(data) {
             if (data.type === 'WHO_ARE_YOU') conn.send({ type: 'HELLO', uuid: myUUID });
+            else if (data.type === 'KICK') { conn.close(); showScreen('screen-disconnected'); }
             else if(data.type === 'INIT') {
                 player = { ...player, ...data };
                 showScreen('screen-lobby');
@@ -239,7 +221,6 @@
 
         const sendInput = (action, payload=null) => { if(conn) conn.send({ type: 'INPUT', action: action, payload: payload }); };
 
-        // --- BUTTONS ---
         const btn = document.getElementById('btn-big');
         const clickZone = document.getElementById('touch-click-zone');
         
@@ -250,45 +231,14 @@
             el.addEventListener('mouseup', () => { sendInput('RELEASE'); el.style.transform = "scale(1)"; });
         });
 
-        // --- D-PAD VECTORS ---
-        window.sendVec = (x, y, e) => {
-            if(e) e.preventDefault(); // Prevent double firing on touch
-            sendInput('VECTOR', { x, y });
-        };
-        // Global mouseup to reset vector if dragging off button
+        window.sendVec = (x, y, e) => { if(e) e.preventDefault(); sendInput('VECTOR', { x, y }); };
         window.addEventListener('touchend', () => sendInput('VECTOR', {x:0, y:0}));
         window.addEventListener('mouseup', () => sendInput('VECTOR', {x:0, y:0}));
 
         function showScreen(id) { document.querySelectorAll('.screen').forEach(s => s.classList.remove('active')); document.getElementById(id).classList.add('active'); }
-        
-        function initP5Lobby() { 
-            if(p5Lobby) return; 
-            const sketch = (p) => { 
-                let sys; p.setup = () => { p.createCanvas(200, 200); sys = new AvatarSystem(p); }; 
-                p.draw = () => { p.clear(); p.translate(100, 100); sys.draw({ x:0, y:0, size:130, color: player.color, variant: player.variant, accessory: player.accessory, expression: 'happy' }); }; 
-            }; 
-            p5Lobby = new p5(sketch, 'lobby-avatar'); 
-        }
-        
-        function initP5Controller() { 
-            if(p5Btn) p5Btn.remove(); 
-            document.getElementById('btn-avatar-target').innerHTML = ''; 
-            const sketch = (p) => { 
-                let sys; p.setup = () => { p.createCanvas(150, 150); sys = new AvatarSystem(p); }; 
-                p.draw = () => { p.clear(); p.translate(75, 75); sys.draw({ x:0, y:0, size:100, color: player.color, variant: player.variant, accessory: player.accessory, expression: 'angry' }); }; 
-            }; 
-            p5Btn = new p5(sketch, 'btn-avatar-target'); 
-        }
-
-        function initP5Touchpad() { 
-            if(p5Touch) p5Touch.remove(); 
-            document.getElementById('touch-avatar-target').innerHTML = ''; 
-            const sketch = (p) => { 
-                let sys; p.setup = () => { p.createCanvas(100, 100); sys = new AvatarSystem(p); }; 
-                p.draw = () => { p.clear(); p.translate(50, 50); sys.draw({ x:0, y:0, size:80, color: player.color, variant: player.variant, accessory: player.accessory, expression: 'idle' }); }; 
-            }; 
-            p5Touch = new p5(sketch, 'touch-avatar-target'); 
-        }
+        function initP5Lobby() { if(p5Lobby) return; const sketch = (p) => { let sys; p.setup = () => { p.createCanvas(200, 200); sys = new AvatarSystem(p); }; p.draw = () => { p.clear(); p.translate(100, 100); sys.draw({ x:0, y:0, size:130, color: player.color, variant: player.variant, accessory: player.accessory, expression: 'happy' }); }; }; p5Lobby = new p5(sketch, 'lobby-avatar'); }
+        function initP5Controller() { if(p5Btn) p5Btn.remove(); document.getElementById('btn-avatar-target').innerHTML = ''; const sketch = (p) => { let sys; p.setup = () => { p.createCanvas(150, 150); sys = new AvatarSystem(p); }; p.draw = () => { p.clear(); p.translate(75, 75); sys.draw({ x:0, y:0, size:100, color: player.color, variant: player.variant, accessory: player.accessory, expression: 'angry' }); }; }; p5Btn = new p5(sketch, 'btn-avatar-target'); }
+        function initP5Touchpad() { if(p5Touch) p5Touch.remove(); document.getElementById('touch-avatar-target').innerHTML = ''; const sketch = (p) => { let sys; p.setup = () => { p.createCanvas(100, 100); sys = new AvatarSystem(p); }; p.draw = () => { p.clear(); p.translate(50, 50); sys.draw({ x:0, y:0, size:80, color: player.color, variant: player.variant, accessory: player.accessory, expression: 'idle' }); }; }; p5Touch = new p5(sketch, 'touch-avatar-target'); }
         
         function updateControllerVisuals() { 
             btn.style.backgroundColor = player.color; 
