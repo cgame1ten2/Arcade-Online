@@ -37,8 +37,9 @@ export default class AvatarMatch extends BaseGame {
     onPlayerInput(player, type) {
         if (!this.canClick) return;
         
-        // Enforce Turns for CLICKING
-        if (player.idx !== this.state.activePlayerIndex) return;
+        // Strict Turn Enforcement based on Player ID
+        const activePlayer = this.players[this.state.activePlayerIndex];
+        if (player.id !== activePlayer.id) return;
 
         if (type === 'PRESS') {
             this.handleInputClick(player.cursorX, player.cursorY);
@@ -48,12 +49,11 @@ export default class AvatarMatch extends BaseGame {
     onDraw() {
         const p = this.p;
 
-        // Draw Cards
         for (let i = 0; i < this.cards.length; i++) {
             this.drawCard(this.cards[i]);
         }
 
-        // Local Mouse
+        // Local Mouse (Only for Local Active Player)
         if (this.mode !== 'demo' && p.mouseIsPressed) {
             const activeP = this.players[this.state.activePlayerIndex];
             if(activeP.type === 'local') {
@@ -72,27 +72,13 @@ export default class AvatarMatch extends BaseGame {
             const c = this.cards[i];
             if (c.isMatched || c.isFlipped) continue;
             
-            const half = this.CARD_SIZE / 2;
+            // Hitbox Buffer (+10px for easier clicking)
+            const half = (this.CARD_SIZE / 2) + 10;
+            
             if (vx > c.x - half && vx < c.x + half && vy > c.y - half && vy < c.y + half) {
                 this.flipCard(c);
                 break;
             }
-        }
-    }
-
-    // Check if any cursor is hovering over a card
-    checkHover(card) {
-        const half = this.CARD_SIZE / 2;
-        // Check active player (cursor or mouse)
-        const activeP = this.players[this.state.activePlayerIndex];
-        if(!activeP) return false;
-
-        if (activeP.type === 'local') {
-            const vx = (this.p.mouseX - this.transX) / this.scaleFactor;
-            const vy = (this.p.mouseY - this.transY) / this.scaleFactor;
-            return (vx > card.x - half && vx < card.x + half && vy > card.y - half && vy < card.y + half);
-        } else {
-            return (activeP.cursorX > card.x - half && activeP.cursorX < card.x + half && activeP.cursorY > card.y - half && activeP.cursorY < card.y + half);
         }
     }
 
@@ -112,17 +98,10 @@ export default class AvatarMatch extends BaseGame {
         p.scale(card.scaleX, 1);
         p.noStroke(); p.fill(0, 30); p.rectMode(p.CENTER); p.rect(6, 6, this.CARD_SIZE, this.CARD_SIZE, 16);
 
-        // HOVER EFFECT
-        const isHovered = !card.isFlipped && !card.isMatched && this.checkHover(card);
-        if (isHovered) {
-            p.stroke('#f1c40f'); p.strokeWeight(8);
-        }
-
+        // Standard Drawing (No Glow)
         if (!card.isFlipped && !card.isMatched) {
             p.fill('#fff'); 
-            if(isHovered) p.fill('#fff9c4'); // Slight yellow tint on hover
             p.rect(0, 0, this.CARD_SIZE, this.CARD_SIZE, 16);
-            
             p.fill('#f0f0f0'); p.circle(0, 0, 90);
             p.fill('#ccc'); p.textSize(70); p.textAlign(p.CENTER, p.CENTER); p.textStyle(p.BOLD); p.text('?', 0, 6);
         } else {
@@ -134,7 +113,6 @@ export default class AvatarMatch extends BaseGame {
         p.pop();
     }
 
-    // ... Rest (Generate, Shuffle, Demo) same as before ...
     generateBoard() {
         const pCount = this.players.length;
         if (pCount <= 2) this.totalPairs = 12; else if (pCount === 3) this.totalPairs = 15; else this.totalPairs = 18;
