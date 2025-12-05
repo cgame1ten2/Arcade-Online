@@ -23,6 +23,8 @@ export default class BaseGame {
             showRoundResultUI: true,
             turnBased: false,
             turnBasedBackgroundColor: false,
+            // NEW: Define Controller Type to show/hide cursors
+            controllerType: rules.controllerType || 'ONE_BUTTON', // 'ONE_BUTTON' or 'TOUCHPAD'
             ...rules
         };
 
@@ -33,8 +35,10 @@ export default class BaseGame {
             isEliminated: false,
             isPermEliminated: false,
             wasPressed: false,
-            aiNextActionTime: 0,
-            aiState: 'IDLE'
+            // NEW: Virtual Input State
+            cursorX: this.V_WIDTH / 2,
+            cursorY: this.V_HEIGHT / 2,
+            isClicking: false
         }));
 
         this.state = {
@@ -74,6 +78,9 @@ export default class BaseGame {
         this.players.forEach(p => {
             p.score = 0;
             p.isPermEliminated = false;
+            // Reset Cursors to center
+            p.cursorX = this.CX;
+            p.cursorY = this.CY;
         });
 
         if (this.audio && this.mode !== 'demo') this.audio.setTrack('game');
@@ -82,7 +89,6 @@ export default class BaseGame {
         this.updateUI(); 
         this.startNewRound();
         
-        // --- FIX: TELL NETWORK GAME STARTED ---
         if (this.mode !== 'demo') {
             window.dispatchEvent(new CustomEvent('game-state-change', { detail: 'PLAYING' }));
         }
@@ -130,7 +136,45 @@ export default class BaseGame {
         }
 
         this.onDraw();
+        
+        // NEW: Draw Virtual Cursors (Only if enabled and not demo)
+        if (this.mode !== 'demo' && this.config.controllerType === 'TOUCHPAD') {
+            this.drawCursors();
+        }
+
         p.pop();
+    }
+
+    drawCursors() {
+        const p = this.p;
+        this.players.forEach(pl => {
+            // Draw cursor for every player (even keyboard/mouse users can have one for consistency)
+            // But specifically useful for mobile.
+            if(pl.isEliminated) return;
+
+            p.push();
+            p.translate(pl.cursorX, pl.cursorY);
+            p.fill(pl.color);
+            p.stroke(255); p.strokeWeight(3);
+            
+            // Draw standard cursor arrow
+            p.beginShape();
+            p.vertex(0, 0);
+            p.vertex(0, 25);
+            p.vertex(8, 18);
+            p.vertex(16, 28);
+            p.vertex(20, 24);
+            p.vertex(12, 16);
+            p.vertex(20, 14);
+            p.endShape(p.CLOSE);
+            
+            // Click Ripple
+            if(pl.isClicking) {
+                p.noFill(); p.stroke(pl.color); p.strokeWeight(2);
+                p.circle(5, 5, 40);
+            }
+            p.pop();
+        });
     }
 
     updateUI() {
@@ -150,7 +194,26 @@ export default class BaseGame {
             if (activeP.id !== playerId) return;
         }
 
-        // Pass payload (for joystick vectors)
+        // --- NEW: Handle Virtual Cursor Movement ---
+        if (type === 'VECTOR' && payload) {
+            // payload.x and payload.y are -1 to 1 (Joystick normalized)
+            // Move cursor speed
+            const speed = 15; 
+            p.cursorX += payload.x * speed;
+            p.cursorY += payload.y * speed;
+            
+            // Clamp to screen
+            p.cursorX = Math.max(0, Math.min(this.V_WIDTH, p.cursorX));
+            p.cursorY = Math.max(0, Math.min(this.V_HEIGHT, p.cursorY));
+        }
+        else if (type === 'PRESS') {
+            p.isClicking = true;
+        }
+        else if (type === 'RELEASE') {
+            p.isClicking = false;
+        }
+
+        // Pass to specific game logic
         this.onPlayerInput(p, type, payload); 
     }
 
@@ -178,6 +241,8 @@ export default class BaseGame {
             p.isEliminated = false;
             p.statusType = (this.config.livesPerRound > 1) ? 'hearts' : 'score';
             p.customStatus = (this.config.livesPerRound > 1) ? p.lives : undefined;
+            // Reset click state
+            p.isClicking = false;
         });
 
         if (this.config.turnBased) {
@@ -195,7 +260,6 @@ export default class BaseGame {
         this.updateUI();
         this.onRoundStart();
 
-        // --- FIX: TELL NETWORK PLAYING ---
         if (this.mode !== 'demo') {
             window.dispatchEvent(new CustomEvent('game-state-change', { detail: 'PLAYING' }));
         }
@@ -290,7 +354,6 @@ export default class BaseGame {
         this.state.isRoundActive = false;
         this.state.phase = 'ROUND_OVER';
         
-        // --- FIX: TELL NETWORK ROUND OVER ---
         if (this.mode !== 'demo') {
             window.dispatchEvent(new CustomEvent('game-state-change', { detail: 'ROUND_OVER' }));
         }
@@ -350,7 +413,6 @@ export default class BaseGame {
         if (this.isDestroyed) return;
         this.state.phase = 'GAME_OVER';
         
-        // --- FIX: TELL NETWORK GAME OVER ---
         if (this.mode !== 'demo') {
             window.dispatchEvent(new CustomEvent('game-state-change', { detail: 'GAME_OVER' }));
         }
