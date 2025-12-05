@@ -8,16 +8,12 @@
     <script src="https://cdn.jsdelivr.net/npm/p5@1.9.0/lib/p5.min.js"></script>
     <style>
         body { margin: 0; padding: 0; background: #2c3e50; font-family: 'Segoe UI', Roboto, sans-serif; overflow: hidden; touch-action: none; user-select: none; color: #333; height: 100vh; width: 100vw; }
-        
         .screen { display: none; width: 100%; height: 100%; flex-direction: column; align-items: center; justify-content: center; position: absolute; top: 0; left: 0; }
         .active { display: flex; }
-        
         .menu-btn { position: absolute; top: 15px; right: 15px; background: rgba(255,255,255,0.2); border: none; color: white; font-size: 24px; width: 40px; height: 40px; border-radius: 50%; cursor: pointer; z-index: 100; }
-        
         #screen-login { background: #2c3e50; color: white; }
         input.code-input { font-size: 30px; padding: 15px; text-align: center; text-transform: uppercase; border-radius: 12px; border: none; background: rgba(255,255,255,0.1); color: white; font-weight: bold; width: 200px; }
         button.action-btn { font-size: 20px; padding: 15px 30px; margin-top: 15px; background: #2ecc71; border: none; color: white; border-radius: 12px; font-weight: bold; cursor: pointer; box-shadow: 0 4px 0 #27ae60; }
-        
         #screen-lobby { background: #2c3e50; }
         .player-card { background: white; border-radius: 16px; padding: 20px; width: 85%; max-width: 350px; display: flex; flex-direction: column; gap: 15px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3); }
         .setup-preview { width: 100%; height: 200px; background: #f8f9fa; border-radius: 12px; display: flex; justify-content: center; align-items: center; }
@@ -26,18 +22,32 @@
         .hue-slider::-webkit-slider-thumb { -webkit-appearance: none; width: 24px; height: 24px; background: white; border: 2px solid #333; border-radius: 50%; }
         .opts-row { display: flex; gap: 10px; }
         .opt-btn { flex: 1; padding: 10px; background: #eee; border: none; border-radius: 6px; font-weight: 600; }
-        
         #screen-controller { background: #2c3e50; }
         #btn-big { width: 85vw; height: 60vh; border-radius: 30px; border: 8px solid rgba(0,0,0,0.1); display: flex; align-items: center; justify-content: center; flex-direction: column; transition: transform 0.05s; box-shadow: 0 10px 30px rgba(0,0,0,0.3); }
         #btn-big:active { transform: scale(0.96); }
         
-        /* TOUCHPAD SPLIT - Fixed Heights */
+        /* STATIC JOYSTICK STYLES */
         #screen-touchpad { background: #2c3e50; display: none; height: 100%; width: 100%; flex-direction: column; }
         #touch-click-zone { height: 30%; width: 100%; background: #2ecc71; display: flex; align-items: center; justify-content: center; color: white; font-weight: 900; font-size: 2rem; border-bottom: 4px solid #27ae60; flex-shrink: 0; }
-        #touch-move-zone { height: 70%; width: 100%; background: #34495e; position: relative; background-image: radial-gradient(#465c71 1px, transparent 1px); background-size: 20px 20px; overflow: hidden; flex-grow: 1; }
+        #touch-move-zone { height: 70%; width: 100%; background: #34495e; position: relative; background-image: radial-gradient(#465c71 1px, transparent 1px); background-size: 20px 20px; overflow: hidden; flex-grow: 1; display: flex; justify-content: center; align-items: center; }
         
-        #joystick-base { position: absolute; width: 120px; height: 120px; background: rgba(0,0,0,0.3); border-radius: 50%; top: 50%; left: 50%; transform: translate(-50%, -50%); pointer-events: none; border: 2px solid rgba(255,255,255,0.1); display: none; }
-        #joystick-knob { position: absolute; width: 60px; height: 60px; background: rgba(255,255,255,0.8); border-radius: 50%; top: 50%; left: 50%; transform: translate(-50%, -50%); pointer-events: none; box-shadow: 0 4px 10px rgba(0,0,0,0.3); display: none; }
+        #joystick-base { 
+            position: relative; /* Centered by flex parent */
+            width: 140px; height: 140px; 
+            background: rgba(0,0,0,0.2); 
+            border-radius: 50%; 
+            border: 2px solid rgba(255,255,255,0.1); 
+        }
+        #joystick-knob { 
+            position: absolute; 
+            width: 70px; height: 70px; 
+            background: rgba(255,255,255,0.8); 
+            border-radius: 50%; 
+            top: 50%; left: 50%; 
+            transform: translate(-50%, -50%); 
+            pointer-events: none; 
+            box-shadow: 0 4px 10px rgba(0,0,0,0.3); 
+        }
         
         #overlay-menu { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); z-index: 200; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 15px; transition: opacity 0.2s; }
         .menu-option { background: white; border: none; width: 80%; padding: 20px; font-size: 1.2rem; font-weight: bold; border-radius: 12px; }
@@ -81,27 +91,25 @@
         </div>
     </div>
 
-    <!-- JOYSTICK -->
+    <!-- JOYSTICK (STATIC) -->
     <div id="screen-touchpad" class="screen">
         <div id="touch-click-zone">TAP TO CLICK</div>
         <div id="touch-move-zone">
-            <div style="text-align:center; color:rgba(255,255,255,0.2); margin-top: 50px;">DRAG TO MOVE</div>
-            <div id="joystick-base"></div>
-            <div id="joystick-knob"></div>
+            <div id="joystick-base">
+                <div id="joystick-knob"></div>
+            </div>
         </div>
     </div>
 
     <!-- MENU -->
     <div id="overlay-menu" class="hidden">
         <div class="menu-header">GAME MENU</div>
-        
         <div id="game-selector-container" class="hidden" style="width:100%; display:flex; flex-direction:column; align-items:center;">
             <select id="game-list" class="game-select">
                 <option value="" disabled selected>Select a Game...</option>
             </select>
             <button class="menu-option primary" onclick="startGameFromMenu()">Start Game</button>
         </div>
-
         <button id="btn-next-round" class="menu-option primary hidden" onclick="sendCmd('NEXT_ROUND')">Start Next Round</button>
         <button id="btn-play-again" class="menu-option primary hidden" onclick="confirmPlayAgain()">Play Again</button>
         <button id="btn-resume" class="menu-option" onclick="toggleMenu()">Resume</button>
@@ -117,7 +125,6 @@
         let currentContext = 'IDLE'; 
         const accessories = AvatarSystem.ACCESSORIES;
         
-        // --- SESSION MANAGEMENT ---
         let myUUID = localStorage.getItem('wa_uuid');
         if (!myUUID) {
             myUUID = 'user-' + Math.random().toString(36).substr(2, 9);
@@ -138,7 +145,6 @@
         };
 
         function handleData(data) {
-            // NEW: Handshake Response
             if (data.type === 'WHO_ARE_YOU') {
                 conn.send({ type: 'HELLO', uuid: myUUID });
             }
@@ -174,7 +180,6 @@
             }
         }
 
-        // --- COMMANDS ---
         window.sendUpdate = () => { player.name = document.getElementById('p-name').value; if(conn) conn.send({ type: 'UPDATE_PROFILE', payload: { name: player.name } }); };
         window.updateColor = (val) => { player.color = hslToHex(val, 70, 50); if(conn) conn.send({ type: 'UPDATE_PROFILE', payload: { color: player.color } }); };
         window.changeAccessory = () => { let idx = accessories.indexOf(player.accessory); player.accessory = accessories[(idx + 1) % accessories.length]; if(conn) conn.send({ type: 'UPDATE_PROFILE', payload: { accessory: player.accessory } }); };
@@ -212,51 +217,61 @@
         btn.addEventListener('mousedown', () => { sendInput('PRESS'); btn.style.transform = "scale(0.96)"; });
         btn.addEventListener('mouseup', () => { sendInput('RELEASE'); btn.style.transform = "scale(1)"; });
 
-        const padMove = document.getElementById('touch-move-zone');
-        const padClick = document.getElementById('touch-click-zone');
-        let stickActive = false;
-        let startX, startY;
+        const moveZone = document.getElementById('touch-move-zone');
+        const clickZone = document.getElementById('touch-click-zone');
         const stickBase = document.getElementById('joystick-base');
         const stickKnob = document.getElementById('joystick-knob');
+        let stickActive = false;
+        let baseRect = null;
 
-        padClick.addEventListener('touchstart', (e) => { e.preventDefault(); sendInput('PRESS'); });
-        padClick.addEventListener('touchend', (e) => { e.preventDefault(); sendInput('RELEASE'); });
-        
-        padMove.addEventListener('touchstart', (e) => {
+        // CLICK
+        clickZone.addEventListener('touchstart', (e) => { e.preventDefault(); sendInput('PRESS'); });
+        clickZone.addEventListener('touchend', (e) => { e.preventDefault(); sendInput('RELEASE'); });
+
+        // STATIC JOYSTICK LOGIC
+        moveZone.addEventListener('touchstart', (e) => {
             e.preventDefault();
             const touch = e.touches[0];
-            const rect = padMove.getBoundingClientRect(); // Get relative pos
-            startX = touch.clientX - rect.left; 
-            startY = touch.clientY - rect.top;
-            
-            stickBase.style.display = 'block'; stickKnob.style.display = 'block';
-            stickBase.style.left = startX + 'px'; stickBase.style.top = startY + 'px';
-            stickKnob.style.left = startX + 'px'; stickKnob.style.top = startY + 'px';
             stickActive = true;
+            // Get center of base relative to viewport
+            baseRect = stickBase.getBoundingClientRect();
+            updateJoystick(touch.clientX, touch.clientY);
         }, {passive:false});
 
-        padMove.addEventListener('touchmove', (e) => {
+        moveZone.addEventListener('touchmove', (e) => {
             e.preventDefault();
             if(!stickActive) return;
             const touch = e.touches[0];
-            const rect = padMove.getBoundingClientRect();
-            
-            let dx = (touch.clientX - rect.left) - startX;
-            let dy = (touch.clientY - rect.top) - startY;
-            
-            const dist = Math.sqrt(dx*dx + dy*dy);
-            const maxDist = 60;
-            if (dist > maxDist) { dx = (dx / dist) * maxDist; dy = (dy / dist) * maxDist; }
-            
-            stickKnob.style.left = (startX + dx) + 'px';
-            stickKnob.style.top = (startY + dy) + 'px';
-            sendInput('VECTOR', { x: dx/maxDist, y: dy/maxDist });
+            updateJoystick(touch.clientX, touch.clientY);
         }, {passive:false});
 
-        padMove.addEventListener('touchend', (e) => {
+        function updateJoystick(cx, cy) {
+            // Center of base
+            const baseX = baseRect.left + baseRect.width / 2;
+            const baseY = baseRect.top + baseRect.height / 2;
+            
+            let dx = cx - baseX;
+            let dy = cy - baseY;
+            
+            // Limit distance (Radius 60)
+            const dist = Math.sqrt(dx*dx + dy*dy);
+            const maxDist = 60;
+            if (dist > maxDist) {
+                dx = (dx / dist) * maxDist;
+                dy = (dy / dist) * maxDist;
+            }
+            
+            // Visual Update
+            stickKnob.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
+            
+            // Send Vector (Normalized)
+            sendInput('VECTOR', { x: dx/maxDist, y: dy/maxDist });
+        }
+
+        moveZone.addEventListener('touchend', (e) => {
             e.preventDefault();
             stickActive = false;
-            stickBase.style.display = 'none'; stickKnob.style.display = 'none';
+            stickKnob.style.transform = `translate(-50%, -50%)`; // Reset to center
             sendInput('VECTOR', { x: 0, y: 0 });
         });
 
