@@ -47,52 +47,37 @@ function init() {
     };
     document.addEventListener('click', startAudio);
 
+    // --- HOST BUTTON LOGIC ---
     if (!document.getElementById('host-game-btn')) {
         const hostBtn = document.createElement('button');
         hostBtn.id = 'host-game-btn';
         hostBtn.className = 'icon-btn';
         hostBtn.innerText = '📡 Host Game';
         hostBtn.style.marginRight = '10px';
+        
         hostBtn.onclick = () => {
+            // 1. Initial Click: Start Hosting
             audio.play('click');
             hostBtn.innerText = 'Starting...';
-            hostBtn.disabled = true;
+            hostBtn.disabled = true; // Temporary disable while connecting
+            
             network.hostGame();
             
             network.onHostReady = (code) => {
-                hostBtnRef.innerText = `Room: ${code}`;
-                hostBtnRef.style.background = '#2ecc71';
-                hostBtnRef.style.borderColor = '#27ae60';
-                hostBtnRef.onclick = null; 
+                // 2. Host Ready: Update Button to be a "Recall" button
+                updateHostButton(code);
+                hostBtn.style.background = '#2ecc71';
+                hostBtn.style.borderColor = '#27ae60';
+                hostBtn.disabled = false; // Re-enable
                 
-                // --- FIX: QR Code Logic ---
-                // 1. Calculate URL
-                const baseUrl = window.location.href.split('?')[0].split('#')[0].replace(/\/$/, "");
-                const joinUrl = `${baseUrl}/mobile.html?room=${code}`;
+                // Change click behavior to show popup again
+                hostBtn.onclick = () => {
+                    audio.play('click');
+                    showConnectPopup(code);
+                };
                 
-                // 2. Show Message with a placeholder DIV for the QR code
-                ui.showMessage(
-                    `Room Code: ${code}`, 
-                    `Scan to Join:<br><div id="host-qr-target" style="display:flex; justify-content:center; margin:15px auto; background:white; padding:10px; width:fit-content; border-radius:8px;"></div>`, 
-                    "OK", 
-                    () => ui.hideMessage()
-                );
-
-                // 3. Generate QR Code into that placeholder after a brief delay (to ensure DOM is ready)
-                setTimeout(() => {
-                    const target = document.getElementById('host-qr-target');
-                    if(target && window.QRCode) {
-                        target.innerHTML = ''; // Clear previous if any
-                        new QRCode(target, {
-                            text: joinUrl,
-                            width: 128,
-                            height: 128,
-                            colorDark : "#2c3e50",
-                            colorLight : "#ffffff",
-                            correctLevel : QRCode.CorrectLevel.H
-                        });
-                    }
-                }, 100);
+                // Show immediately
+                showConnectPopup(code);
             };
         };
         mainHeader.insertBefore(hostBtn, setupBtn);
@@ -166,6 +151,41 @@ function init() {
 
     renderHub(); 
     attachGlobalSoundListeners();
+}
+
+/**
+ * REUSABLE POPUP FOR QR CODE
+ */
+function showConnectPopup(code) {
+    // 1. Calculate URL
+    const baseUrl = window.location.href.split('?')[0].split('#')[0].replace(/\/$/, "");
+    const joinUrl = `${baseUrl}/mobile.html?room=${code}`;
+    
+    // 2. Show Message with placeholder DIV
+    ui.showMessage(
+        `Room Code: ${code}`, 
+        `Scan to Join:<br>
+         <div id="host-qr-target" style="display:flex; justify-content:center; margin:15px auto; background:white; padding:10px; width:fit-content; border-radius:8px; box-shadow:0 4px 10px rgba(0,0,0,0.1);"></div>
+         <p style="font-size:0.9em; opacity:0.7;">Or visit mobile.html</p>`, 
+        "OK", 
+        () => ui.hideMessage()
+    );
+
+    // 3. Render QR Code
+    setTimeout(() => {
+        const target = document.getElementById('host-qr-target');
+        if(target && window.QRCode) {
+            target.innerHTML = ''; 
+            new QRCode(target, {
+                text: joinUrl,
+                width: 150,
+                height: 150,
+                colorDark : "#2c3e50",
+                colorLight : "#ffffff",
+                correctLevel : QRCode.CorrectLevel.M
+            });
+        }
+    }, 100);
 }
 
 function updateHostButton(code) {
