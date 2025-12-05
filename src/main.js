@@ -35,8 +35,6 @@ const savePlayersBtn = document.getElementById('save-players-btn');
 const addPlayerBtn = document.getElementById('add-player-btn');
 const playerConfigGrid = document.getElementById('player-config-grid');
 const mainHeader = document.getElementById('main-header');
-
-// Keep ref to update text later
 let hostBtnRef = null;
 
 function init() {
@@ -49,34 +47,35 @@ function init() {
     };
     document.addEventListener('click', startAudio);
 
-    // --- HOST BUTTON ---
     if (!document.getElementById('host-game-btn')) {
         const hostBtn = document.createElement('button');
         hostBtn.id = 'host-game-btn';
         hostBtn.className = 'icon-btn';
         hostBtn.innerText = '📡 Host Game';
         hostBtn.style.marginRight = '10px';
-        
         hostBtn.onclick = () => {
             audio.play('click');
             hostBtn.innerText = 'Starting...';
             hostBtn.disabled = true;
-            
             network.hostGame();
             
             network.onHostReady = (code) => {
-                // Initial Text
-                updateHostButton(code);
-                hostBtn.style.background = '#2ecc71';
-                hostBtn.style.borderColor = '#27ae60';
-                hostBtn.onclick = null; 
+                hostBtnRef.innerText = `Room: ${code}`;
+                hostBtnRef.style.background = '#2ecc71';
+                hostBtnRef.style.borderColor = '#27ae60';
+                hostBtnRef.onclick = null; 
                 
-                ui.showMessage(
-                    `Room Code: ${code}`, 
-                    "Open mobile.html on your phone to join!", 
-                    "OK", 
-                    () => ui.hideMessage()
-                );
+                // --- NEW: Generate QR Code ---
+                // Construct URL: current_host/mobile.html?room=CODE
+                const baseUrl = window.location.href.substring(0, window.location.href.lastIndexOf('/'));
+                const joinUrl = `${baseUrl}/mobile.html?room=${code}`;
+                
+                const qrDiv = document.getElementById('qr-container');
+                qrDiv.innerHTML = ''; // Clear old
+                new QRCode(qrDiv, { text: joinUrl, width: 80, height: 80 });
+                qrDiv.style.display = 'block';
+                
+                ui.showMessage(`Room Code: ${code}`, "Scan QR or visit mobile.html", "OK", () => ui.hideMessage());
             };
         };
         mainHeader.insertBefore(hostBtn, setupBtn);
@@ -112,17 +111,9 @@ function init() {
         if (e.key === 'Escape' && currentMode === 'game') returnToHub();
     });
 
-    // --- PLAYER UPDATES ---
     window.addEventListener('player-update', () => {
-        // 1. Update Host Button Count
-        if (network.roomId && hostBtnRef) {
-            updateHostButton(network.roomId);
-        }
-
-        // 2. Refresh Lobby if open
-        if (!setupOverlay.classList.contains('hidden')) {
-            renderVisualLobby();
-        }
+        if(network.roomId && hostBtnRef) updateHostButton(network.roomId);
+        if (!setupOverlay.classList.contains('hidden')) renderVisualLobby();
     });
 
     window.addEventListener('remote-command', (e) => {
@@ -272,15 +263,23 @@ function showTournamentSetup() {
     document.getElementById('cancel-tourney').onclick = () => { audio.play('click'); ui.hideMessage(); };
 }
 
+function setupLobby() {
+    // Only listener attachment
+}
+
 function cleanupLobby() { lobbyInstances.forEach(p => p.remove()); lobbyInstances = []; }
 
 function renderVisualLobby() {
     cleanupLobby();
     const controls = document.querySelector('.lobby-controls');
     
-    // REMOVED THE HOST LOBBY "X" (as per request)
-    const existingClose = document.getElementById('lobby-close-btn');
-    if (existingClose) existingClose.remove();
+    // Check for QR Container creation if init didn't create it
+    if(!document.getElementById('qr-container')) {
+        const qr = document.createElement('div');
+        qr.id = 'qr-container';
+        qr.style.cssText = "display:none; background:white; padding:5px; border-radius:8px; margin-right:15px;";
+        document.querySelector('.lobby-header').insertBefore(qr, controls);
+    }
 
     const existingSettings = document.querySelector('.lobby-settings');
     if (existingSettings) existingSettings.remove();
@@ -294,7 +293,6 @@ function renderVisualLobby() {
     
     playerConfigGrid.innerHTML = '';
     const activePlayers = players.getActivePlayers();
-    
     activePlayers.forEach((p, index) => {
         const card = document.createElement('div');
         card.className = 'player-setup-card';
