@@ -24,10 +24,9 @@ inputs.setNetworkManager(network);
 // --- GLOBAL STATE ---
 let currentMode = 'hub';
 let currentGameState = 'IDLE'; 
-let currentScreenType = 'CONTROLLER'; 
+let currentScreenType = 'CONTROLLER'; // Track this so we don't overwrite Touchpad mode
 let lobbyInstances = []; 
 let demoInstances = [];
-let snapshotInterval = null; // To store the loop ID
 
 // --- DOM ELEMENTS ---
 const hubGrid = document.getElementById('hub-grid');
@@ -72,7 +71,6 @@ function init() {
         mainHeader.insertBefore(hostBtn, setupBtn);
     }
 
-    // --- SETUP LISTENERS ---
     setupBtn.onclick = () => {
         audio.play('click');
         audio.setTrack('config'); 
@@ -106,28 +104,19 @@ function init() {
         if (!setupOverlay.classList.contains('hidden')) renderVisualLobby();
     });
 
-    // --- REMOTE COMMAND HANDLING ---
     window.addEventListener('remote-command', (e) => {
         const cmd = e.detail; 
-        
         if (cmd.action === 'EXIT') returnToHub();
-        
         else if (cmd.action === 'NEXT_ROUND') {
             if (currentMode === 'game' && runner.activeGame) {
-                // IMPORTANT: Hide the "Round Over" popup on Host
-                ui.hideMessage(); 
                 runner.activeGame.startNewRound();
             }
         }
-        
         else if (cmd.action === 'PLAY_AGAIN') {
             if (currentMode === 'game' && runner.activeGame) {
-                // IMPORTANT: Hide Podium on Host
-                ui.hideMessage();
                 runner.activeGame.setup(); 
             }
         }
-        
         else if (cmd.action === 'SELECT_GAME') {
             const gameId = cmd.payload;
             const gameConfig = GAME_LIST.find(g => g.id === gameId);
@@ -139,26 +128,12 @@ function init() {
         }
     });
 
-    // --- GAME STATE SYNC ---
+    // --- FIX: Listen for Internal Game Updates ---
     window.addEventListener('game-state-change', (e) => {
         currentGameState = e.detail; // PLAYING, ROUND_OVER, GAME_OVER
+        // Re-broadcast using the stored screen type (Controller/Touchpad)
         network.broadcastState(currentScreenType, currentGameState);
     });
-
-    // --- SNAPSHOT LOOP (5 FPS) ---
-    // Sends the screen to phones if in TOUCHPAD mode
-    setInterval(() => {
-        if (currentMode === 'game' && currentScreenType === 'TOUCHPAD' && runner.activeP5) {
-            // Take 0.4 quality JPEG (Smaller packet size)
-            // Note: toDataURL is sync and can be slow, but at 5fps it's usually fine
-            try {
-                const data = runner.activeP5.canvas.toDataURL('image/jpeg', 0.4);
-                network.broadcastScreen(data);
-            } catch (err) {
-                // Canvas might not be ready yet
-            }
-        }
-    }, 200);
 
     renderHub(); 
     attachGlobalSoundListeners();
@@ -167,16 +142,14 @@ function init() {
 function renderHub() {
     currentMode = 'hub';
     currentGameState = 'IDLE';
-    
     demoInstances.forEach(inst => inst.remove());
     demoInstances = [];
     hubGrid.innerHTML = '';
-
     createTournamentBanner();
     GAME_LIST.forEach(game => createGameCard(game));
-    
     audio.setTrack('lobby');
     
+    // Reset Mobile to Lobby
     const gameNames = GAME_LIST.map(g => ({ id: g.id, title: g.title }));
     network.broadcastState('LOBBY', 'IDLE', { gameList: gameNames });
 
@@ -230,6 +203,7 @@ function enterGameMode(gameConfig) {
     gameStage.classList.remove('hidden');
     pauseDemos();
 
+    // Determine Phone Screen Type
     currentScreenType = 'CONTROLLER'; 
     if (gameConfig && gameConfig.id === 'avatar-match') {
         currentScreenType = 'TOUCHPAD'; 
@@ -241,13 +215,7 @@ function enterGameMode(gameConfig) {
 function returnToHub() {
     audio.play('click');
     gameStage.classList.add('hidden');
-    
-    // Explicitly nullify
     runner.mount(null, 'game-canvas-container', 'active');
-    
-    // Ensure loop is reset
-    currentScreenType = 'CONTROLLER';
-    
     renderHub();
 }
 
