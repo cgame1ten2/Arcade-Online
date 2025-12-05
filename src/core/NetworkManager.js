@@ -30,14 +30,11 @@ export default class NetworkManager {
             const newPlayer = this.players.addPlayer('mobile'); 
             this.connections.set(conn.peer, { conn, playerId: newPlayer.id, rtt: 0 });
             
-            // Send Init
             this.sendToPhone(conn, {
                 type: 'INIT', playerId: newPlayer.id,
                 color: newPlayer.color, name: newPlayer.name,
                 accessory: newPlayer.accessory, variant: newPlayer.variant
             });
-            
-            // Update Host UI
             window.dispatchEvent(new CustomEvent('player-update'));
         });
 
@@ -63,29 +60,32 @@ export default class NetworkManager {
                 client.rtt = performance.now() - data.ts;
                 this.recalculateLag();
                 break;
-                
             case 'INPUT':
-                // Handles PRESS, RELEASE, and now VECTOR (Joystick)
+                // Handles PRESS, RELEASE, and TOUCH (with normalized coords)
                 this.input.triggerInput(client.playerId, data.action, true, data.payload);
                 break;
-                
             case 'UPDATE_PROFILE':
                 this.players.updatePlayer(client.playerId, data.payload);
                 window.dispatchEvent(new CustomEvent('player-update')); 
                 break;
-                
             case 'COMMAND':
-                // Dispatch generic commands (EXIT, NEXT_ROUND, PLAY_AGAIN, SELECT_GAME)
                 window.dispatchEvent(new CustomEvent('remote-command', { detail: data }));
                 break;
         }
     }
 
-    /**
-     * Broadcast State + Context
-     * @param {string} stateType - LOBBY, CONTROLLER, TOUCHPAD
-     * @param {string} context - IDLE, PLAYING, ROUND_OVER, GAME_OVER (Controls Menu Options)
-     */
+    // --- NEW: SCREEN MIRRORING ---
+    broadcastScreen(imageData) {
+        // We only send this to players currently in TOUCHPAD mode to save bandwidth
+        // But for simplicity, we broadcast to all.
+        // Optimization: PeerJS handles binary better, but Base64 string is easier for <img> tags.
+        const packet = { type: 'SCREEN_UPDATE', image: imageData };
+        
+        this.connections.forEach(client => {
+            if(client.conn.open) client.conn.send(packet);
+        });
+    }
+
     broadcastState(stateType, context = 'IDLE', payload = {}) {
         this.connections.forEach((client) => {
             const player = this.players.getPlayerById(client.playerId);
@@ -93,7 +93,7 @@ export default class NetworkManager {
             const packet = {
                 type: 'STATE_CHANGE', 
                 state: stateType, 
-                context: context, // New field for Menu Logic
+                context: context, 
                 player: { 
                     color: player.color, name: player.name, 
                     accessory: player.accessory, variant: player.variant 
