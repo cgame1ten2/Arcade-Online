@@ -9,6 +9,7 @@ export default class NetworkManager {
         this.roomId = null;
         this.systemLag = 0; 
         
+        // Fix: Use arrow function to bind 'this' correctly
         setInterval(() => this.measureLatency(), 1000);
     }
 
@@ -27,12 +28,18 @@ export default class NetworkManager {
 
     handleConnection(conn) {
         conn.on('open', () => {
-            conn.send({ type: 'WHO_ARE_YOU' }); // Handshake 1
+            conn.send({ type: 'WHO_ARE_YOU' });
         });
 
         conn.on('data', (data) => this.handleData(conn, data));
         
         conn.on('close', () => {
+            this.disconnectPeer(conn.peer);
+        });
+        
+        // Handle error to prevent crash
+        conn.on('error', (err) => {
+            console.warn("Connection Error:", err);
             this.disconnectPeer(conn.peer);
         });
     }
@@ -70,7 +77,7 @@ export default class NetworkManager {
         const existingPlayer = this.players.getPlayerByUUID(uuid);
 
         if (existingPlayer) {
-            // Reconnection Logic
+            // Reconnection: Kill old connections for this user
             for (const [peerId, client] of this.connections.entries()) {
                 if (client.playerId === existingPlayer.id && peerId !== conn.peer) {
                     this.connections.delete(peerId);
@@ -102,7 +109,9 @@ export default class NetworkManager {
         }
     }
 
-    maintenanceLoop() {
+    // --- FIX: Ensure this method exists inside the class ---
+    measureLatency() {
+        if (this.connections.size === 0) { this.systemLag = 0; return; }
         const now = performance.now();
         
         this.connections.forEach((client, peerId) => {
@@ -110,13 +119,10 @@ export default class NetworkManager {
                 client.conn.send({ type: 'PING', ts: now });
             }
 
-            // --- RELAXED TIMEOUT: 45 SECONDS ---
+            // Zombie Reaper: 45 seconds timeout
             if (now - client.lastHeartbeat > 45000) {
                 console.log(`💀 Zombie Reaper: Kicking Player ${client.playerId}`);
-                
-                // Try to tell phone goodbye
                 if(client.conn.open) client.conn.send({ type: 'KICK' });
-                
                 this.players.removePlayerById(client.playerId);
                 this.connections.delete(peerId);
                 window.dispatchEvent(new CustomEvent('player-update'));
