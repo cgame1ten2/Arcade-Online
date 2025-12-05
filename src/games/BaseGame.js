@@ -27,8 +27,8 @@ export default class BaseGame {
             ...rules
         };
 
-        // Tunable Cursor Speed
-        this.CURSOR_SPEED = 8; 
+        // --- TUNING: CURSOR SPEED ---
+        this.CURSOR_SPEED = 6; 
 
         this.players = this.allPlayers.map(p => ({ 
             ...p, 
@@ -113,7 +113,7 @@ export default class BaseGame {
             this.timerLastTick = p.millis();
         }
 
-        // --- CURSOR UPDATE (ALWAYS RUNS) ---
+        // Apply Cursor Physics
         if (this.config.controllerType === 'TOUCHPAD') {
             this.players.forEach(pl => {
                 if(pl.inputVector.x !== 0 || pl.inputVector.y !== 0) {
@@ -151,7 +151,6 @@ export default class BaseGame {
 
         this.onDraw();
         
-        // --- DRAW CURSORS ---
         if (this.mode !== 'demo' && this.config.controllerType === 'TOUCHPAD') {
             this.drawCursors();
         }
@@ -162,7 +161,6 @@ export default class BaseGame {
     drawCursors() {
         const p = this.p;
         this.players.forEach(pl => {
-            // HIDE LOCAL CURSORS (Real mouse exists)
             if(pl.isEliminated || pl.type === 'local') return;
 
             p.push();
@@ -177,7 +175,7 @@ export default class BaseGame {
             
             if(pl.isClicking) {
                 p.noFill(); p.stroke(pl.color); p.strokeWeight(3);
-                p.circle(5, 5, 50);
+                p.circle(5, 5, 60); // Larger Ripple
             }
             p.pop();
         });
@@ -195,17 +193,13 @@ export default class BaseGame {
         const p = this.players.find(pl => pl.id === playerId);
         if (!p || p.isEliminated || p.isPermEliminated) return;
         
-        // --- KEY CHANGE: WE REMOVED THE TURN CHECK HERE ---
-        // This allows cursors to move even if it's not their turn.
-        // We only enforce turn blocking inside specific PRESS events if needed.
+        // Note: We removed the turn-based blocking here so cursors can always move.
+        // Games must enforce turns for actions inside onPlayerInput.
 
-        // --- STORE VECTOR ---
         if (type === 'VECTOR' && payload) {
             p.inputVector = payload; 
         }
         else if (type === 'PRESS') {
-            // Check turns for CLICKS only?
-            // Actually, let's let the specific Game enforce click rules.
             p.isClicking = true;
         }
         else if (type === 'RELEASE') {
