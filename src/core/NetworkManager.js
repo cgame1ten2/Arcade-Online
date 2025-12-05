@@ -5,11 +5,12 @@ export default class NetworkManager {
         this.players = playerManager;
         this.input = inputManager;
         this.peer = null;
-        this.connections = new Map();
+        this.connections = new Map(); // Map<peerId, { conn, playerId, lastHeartbeat, rtt }>
         this.roomId = null;
         this.systemLag = 0; 
         
-        setInterval(() => this.measureLatency(), 1000);
+        // Start Heartbeat Loop (Latency + Zombie Check)
+        setInterval(() => this.maintenanceLoop(), 1000);
     }
 
     async hostGame() {
@@ -22,50 +23,51 @@ export default class NetworkManager {
             console.log(`📡 Host Started: ${this.roomId}`);
             if (this.onHostReady) this.onHostReady(this.roomId);
         });
-        this.peer.on('connection', (c) => this.handleConnection(c));
+        
+        this.peer.on('connection', (c) => this.handleRawConnection(c));
     }
 
-    handleConnection(conn) {
+    handleRawConnection(conn) {
+        // We do NOT add a player yet. We wait for the Handshake.
         conn.on('open', () => {
-            const newPlayer = this.players.addPlayer('mobile'); 
-            this.connections.set(conn.peer, { conn, playerId: newPlayer.id, rtt: 0 });
-            
-            // Send Init
-            this.sendToPhone(conn, {
-                type: 'INIT', playerId: newPlayer.id,
-                color: newPlayer.color, name: newPlayer.name,
-                accessory: newPlayer.accessory, variant: newPlayer.variant
-            });
-            
-            // Update Host UI
-            window.dispatchEvent(new CustomEvent('player-update'));
+            // Ask for credentials
+            conn.send({ type: 'WHO_ARE_YOU' });
         });
 
-        conn.on('data', (data) => this.handleData(conn.peer, data));
+        conn.on('data', (data) => this.handleDataPacket(conn, data));
         
         conn.on('close', () => {
-            const data = this.connections.get(conn.peer);
-            if (data) {
-                this.players.removePlayerById(data.playerId);
-                this.connections.delete(conn.peer);
-                this.recalculateLag();
-                window.dispatchEvent(new CustomEvent('player-update'));
-            }
+            this.disconnectPeer(conn.peer);
+        });
+        
+        conn.on('error', () => {
+            this.disconnectPeer(conn.peer);
         });
     }
 
-    handleData(peerId, data) {
-        const client = this.connections.get(peerId);
-        if (!client) return;
+    handleDataPacket(conn, data) {
+        // 1. HANDSHAKE (The most important part)
+        if (data.type === 'HELLO') {
+            const uuid = data.uuid;
+            this.registerPlayer(conn, uuid);
+            return;
+        }
+
+        // 2. STANDARD PACKETS (Require registered connection)
+        const client = this.connections.get(conn.peer);
+        
+        // Security: Ignore packets from unregistered peers
+        if (!client) return; 
+
+        // Update Heartbeat
+        client.lastHeartbeat = performance.now();
 
         switch (data.type) {
             case 'PONG':
                 client.rtt = performance.now() - data.ts;
-                this.recalculateLag();
                 break;
                 
             case 'INPUT':
-                // Handles PRESS, RELEASE, and now VECTOR (Joystick)
                 this.input.triggerInput(client.playerId, data.action, true, data.payload);
                 break;
                 
@@ -75,25 +77,119 @@ export default class NetworkManager {
                 break;
                 
             case 'COMMAND':
-                // Dispatch generic commands (EXIT, NEXT_ROUND, PLAY_AGAIN, SELECT_GAME)
                 window.dispatchEvent(new CustomEvent('remote-command', { detail: data }));
                 break;
         }
     }
 
-    /**
-     * Broadcast State + Context
-     * @param {string} stateType - LOBBY, CONTROLLER, TOUCHPAD
-     * @param {string} context - IDLE, PLAYING, ROUND_OVER, GAME_OVER (Controls Menu Options)
-     */
+    registerPlayer(conn, uuid) {
+        // Check if this UUID exists (Reconnection)
+        const existingPlayer = this.players.getPlayerByUUID(uuid);
+
+        if (existingPlayer) {
+            console.log(`♻️ Player Reconnected: ${existingPlayer.name} (${uuid})`);
+            
+            // Check if there is an old stale connection for this player and kill it
+            for (const [peerId, client] of this.connections.entries()) {
+                if (client.playerId === existingPlayer.id && peerId !== conn.peer) {
+                    this.connections.delete(peerId);
+                }
+            }
+
+            // Bind new connection to existing ID
+            this.connections.set(conn.peer, { 
+                conn, 
+                playerId: existingPlayer.id, 
+                lastHeartbeat: performance.now(), 
+                rtt: 0 
+            });
+
+            // Send State Sync immediately
+            this.syncPlayerState(conn, existingPlayer);
+
+        } else {
+            console.log(`✨ New Player: ${uuid}`);
+            // New Player
+            const newPlayer = this.players.addPlayer('mobile', uuid);
+            
+            this.connections.set(conn.peer, { 
+                conn, 
+                playerId: newPlayer.id, 
+                lastHeartbeat: performance.now(), 
+                rtt: 0 
+            });
+
+            // Send Init
+            this.syncPlayerState(conn, newPlayer);
+            window.dispatchEvent(new CustomEvent('player-update'));
+        }
+    }
+
+    syncPlayerState(conn, player) {
+        // Send identity
+        this.sendToPhone(conn, {
+            type: 'INIT', 
+            playerId: player.id,
+            color: player.color, 
+            name: player.name,
+            accessory: player.accessory, 
+            variant: player.variant
+        });
+
+        // Send current game state context (Lobby/Game/etc) logic handled by main.js broadcasting
+        // But we should trigger a refresh on the host side to ensure this specific phone gets updated
+        // For now, main.js loop handles general broadcast.
+    }
+
+    disconnectPeer(peerId) {
+        // We do NOT remove the player immediately. 
+        // We just remove the connection. The player might reconnect in 2 seconds.
+        // The "Zombie Reaper" will remove the player if they don't return.
+        if (this.connections.has(peerId)) {
+            console.log(`🔌 Connection Dropped: ${peerId}`);
+            this.connections.delete(peerId);
+            this.recalculateLag();
+        }
+    }
+
+    maintenanceLoop() {
+        const now = performance.now();
+        
+        // 1. Send Pings & Check Zombies
+        this.connections.forEach((client, peerId) => {
+            if (client.conn.open) {
+                client.conn.send({ type: 'PING', ts: now });
+            }
+
+            // Zombie Check: If no heartbeat for 10 seconds, Kick Player
+            // (Increased from 5s to 10s to be generous with laggy phones)
+            if (now - client.lastHeartbeat > 10000) {
+                console.log(`💀 Zombie Reaper: Kicking Player ${client.playerId}`);
+                this.players.removePlayerById(client.playerId);
+                this.connections.delete(peerId);
+                window.dispatchEvent(new CustomEvent('player-update'));
+            }
+        });
+
+        this.recalculateLag();
+    }
+
+    recalculateLag() {
+        if (this.connections.size === 0) { this.systemLag = 0; return; }
+        let totalRTT = 0;
+        this.connections.forEach(c => totalRTT += c.rtt);
+        this.systemLag = Math.floor((totalRTT / this.connections.size) / 2);
+    }
+
+    // --- BROADCAST ---
     broadcastState(stateType, context = 'IDLE', payload = {}) {
         this.connections.forEach((client) => {
             const player = this.players.getPlayerById(client.playerId);
-            if(!player) return;
+            if(!player) return; // Player might have been reaped
             const packet = {
                 type: 'STATE_CHANGE', 
                 state: stateType, 
-                context: context, // New field for Menu Logic
+                context: context,
                 player: { 
                     color: player.color, name: player.name, 
                     accessory: player.accessory, variant: player.variant 
@@ -105,17 +201,4 @@ export default class NetworkManager {
     }
 
     sendToPhone(conn, data) { if (conn && conn.open) conn.send(data); }
-
-    measureLatency() {
-        if (this.connections.size === 0) { this.systemLag = 0; return; }
-        const now = performance.now();
-        this.connections.forEach(client => { if (client.conn.open) client.conn.send({ type: 'PING', ts: now }); });
-    }
-
-    recalculateLag() {
-        if (this.connections.size === 0) { this.systemLag = 0; return; }
-        let totalRTT = 0;
-        this.connections.forEach(c => totalRTT += c.rtt);
-        this.systemLag = Math.floor((totalRTT / this.connections.size) / 2);
-    }
 }
