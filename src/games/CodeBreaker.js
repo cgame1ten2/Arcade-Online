@@ -7,16 +7,14 @@ export default class CodeBreaker extends BaseGame {
 
     onSetup() {
         // --- GAME RULES ---
-        // We use SCORE mode, but we handle the logic manually.
-        // BaseGame handles the generic 'Round Over' screens.
         this.config.winCondition = 'SCORE';
-        this.config.winValue = 3; // Not strictly used due to custom logic below, but good default
+        this.config.winValue = 3;
 
+        // We handle round flow manually
         this.config.roundEndCriteria = 'NONE';
         this.config.livesPerRound = 1;
         this.config.eliminateOnDeath = false;
 
-        // Disable auto-loop UI because we show a specific "Number Found" popup
         this.config.showRoundResultUI = false;
 
         this.avatars = new AvatarSystem(this.p);
@@ -31,39 +29,42 @@ export default class CodeBreaker extends BaseGame {
     }
 
     onRoundStart() {
-        // --- FIX: ALWAYS RESET GAME STATE ---
-        this.gameState = 'GUESSING';
-        this.activeJudges = [];
+        const now = this.p.millis();
 
-        // Only pick a new number if someone actually won the previous round
+        // 1. HARD RESET (New Secret Number)
+        // Occurs when someone correctly guessed the previous number
         if (this.needNewSecret) {
             this.secretNumber = Math.floor(this.p.random(0, 100));
             this.needNewSecret = false;
+            this.activeJudges = []; // Clear robots only on new number
 
-            // Hard Reset Players for fresh round
             this.playerStates = this.players.map((p, i) => ({
                 id: p.id,
                 config: p,
                 index: i,
                 phase: 'tens',
                 digit: 0,
-                digitTimer: this.p.millis(), // Fix: Sync timer to now
+                digitTimer: now, // Reset timer
                 tens: 0,
                 ones: 0,
                 guess: null,
                 diff: 100,
                 isClosest: false,
                 lastRoundGuess: null,
-                lastRoundFeedback: null // null, 'low', 'high', 'win'
+                lastRoundFeedback: null 
             }));
-        } else {
-            // Soft Reset: Keep previous guess/feedback visible so they can deduce
+        } 
+        // 2. SOFT RESET (Same Secret Number)
+        // Occurs when nobody guessed it correctly
+        else {
+            this.gameState = 'GUESSING';
             this.playerStates.forEach(ps => {
                 ps.phase = 'tens';
                 ps.digit = 0;
-                ps.digitTimer = this.p.millis(); // Fix: Reset timer
-                // Keep lastRoundFeedback intact!
+                ps.digitTimer = now; // IMPORTANT: Reset timer so cycling starts fresh
+                // Keep lastRoundFeedback intact for hints!
             });
+            // Do NOT clear activeJudges so players can see previous hints
         }
     }
 
@@ -101,6 +102,8 @@ export default class CodeBreaker extends BaseGame {
 
         this.playerStates.forEach(ps => {
             if (ps.phase === 'locked' || ps.phase === 'done') return;
+            
+            // Cycle numbers
             if (p.millis() - ps.digitTimer > interval) {
                 ps.digit = (ps.digit + 1) % 10;
                 ps.digitTimer = p.millis();
@@ -134,6 +137,7 @@ export default class CodeBreaker extends BaseGame {
     }
 
     evaluateGuesses() {
+        // Clear old robots before showing new results
         this.activeJudges = [];
 
         let exactMatch = false;
@@ -151,15 +155,15 @@ export default class CodeBreaker extends BaseGame {
                 exactMatch = true;
                 winnerName = ps.config.name;
             }
-            else if (diff < 0) ps.lastRoundFeedback = 'low'; // Guessed low, need UP arrow
-            else ps.lastRoundFeedback = 'high'; // Guessed high, need DOWN arrow
+            else if (diff < 0) ps.lastRoundFeedback = 'low'; 
+            else ps.lastRoundFeedback = 'high'; 
 
             if (ps.diff < bestDiff) bestDiff = ps.diff;
             ps.phase = 'done';
             ps.isClosest = false;
         });
 
-        // 2. Determine "Closest" for visual robot (even if not exact)
+        // 2. Determine "Closest" for visual robot
         const availableW = this.V_WIDTH - 400;
         const colW = availableW / this.playerStates.length;
         const startX = 200;
@@ -178,10 +182,7 @@ export default class CodeBreaker extends BaseGame {
 
         // 3. Logic Branch
         if (exactMatch) {
-            // --- SOMEONE WON THE ROUND ---
             this.playSound('win');
-
-            // Award Points (BaseGame handles win condition automatically)
             this.playerStates.forEach(ps => {
                 if (ps.diff === 0) {
                     const pObj = this.players[ps.index];
@@ -189,14 +190,10 @@ export default class CodeBreaker extends BaseGame {
                 }
             });
             this.updateUI();
+            this.needNewSecret = true; 
 
-            this.needNewSecret = true; // Prepare fresh number for next round
-
-            // Wait 2 seconds to see results, then popup
             setTimeout(() => {
                 if (this.mode !== 'demo') {
-                    // Check if Game is Over first? BaseGame checks this usually.
-                    // But we want to show the specific number reveal.
                     this.ui.showMessage(`Number Found: ${this.secretNumber}!`, `${winnerName} got it!`, "Next Round", () => {
                         this.endRound();
                     });
@@ -206,12 +203,9 @@ export default class CodeBreaker extends BaseGame {
             }, 2000);
 
         } else {
-            // --- NO WINNER, CONTINUE GUESSING ---
             this.playSound('bump');
-            this.needNewSecret = false; // Keep same number!
+            this.needNewSecret = false; // Same number next time
 
-            // Wait 2 seconds, then let them guess again
-            // We use startNewRound() to trigger the soft reset logic
             setTimeout(() => {
                 this.startNewRound();
             }, 2000);
