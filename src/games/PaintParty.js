@@ -6,18 +6,20 @@ import AvatarSystem from '../core/AvatarSystem.js';
 export default class PaintParty extends BaseGame {
 
     onSetup() {
-        // We use 'TIME' mode to get the timer, but we manually handle the win condition.
+        // --- GAME RULES ---
+        // We use 'TIME' mode so BaseGame handles the countdown.
         this.config.winCondition = 'TIME'; 
-        this.config.roundDuration = 45000; 
+        this.config.roundDuration = 45000; // 45 Seconds per round
+        
         this.config.livesPerRound = 1;
-        this.config.eliminateOnDeath = false;
+        this.config.eliminateOnDeath = false; // Just stun
+        
         this.config.turnBased = false; 
         this.config.showRoundResultUI = true;
-        
-        // NEW: Enable Touchpad so Joystick works on mobile
-        this.config.controllerType = 'TOUCHPAD';
+        this.config.controllerType = 'ONE_BUTTON'; // Kept as requested
 
-        this.CELL_SIZE = 120;
+        // --- CONSTANTS ---
+        this.CELL_SIZE = 120; // 16x10 Grid
         this.GRID_COLS = Math.ceil(this.V_WIDTH / this.CELL_SIZE);
         this.GRID_ROWS = Math.ceil(this.V_HEIGHT / this.CELL_SIZE);
         this.MOVE_SPEED = 9; 
@@ -25,13 +27,20 @@ export default class PaintParty extends BaseGame {
         this.avatars = new AvatarSystem(this.p);
         this.grid = []; 
         this.particles = [];
+        
+        // Track Round Wins and Rounds Played manually
+        // because p.score is used for temporary tile counting
         this.roundWins = this.players.map(() => 0); 
+        this.totalRoundsPlayed = 0;
     }
 
     onRoundStart() {
         this.particles = [];
-        this.players.forEach(p => p.score = 0); // Reset tile count for the round
         
+        // 1. Reset Tile Scores for the new round
+        this.players.forEach(p => p.score = 0);
+        
+        // 2. Initialize Grid
         this.grid = [];
         for (let x = 0; x < this.GRID_COLS; x++) {
             this.grid[x] = [];
@@ -40,9 +49,11 @@ export default class PaintParty extends BaseGame {
             }
         }
 
+        // 3. Spawn Players
         this.gamePlayers = this.players.map((basePlayer, index) => {
             const gx = this.p.floor(this.p.random(1, this.GRID_COLS - 1));
             const gy = this.p.floor(this.p.random(1, this.GRID_ROWS - 1));
+            
             this.grid[gx][gy] = index;
             basePlayer.score = 1;
 
@@ -52,7 +63,7 @@ export default class PaintParty extends BaseGame {
                 config: basePlayer,
                 x: gx * this.CELL_SIZE + this.CELL_SIZE/2,
                 y: gy * this.CELL_SIZE + this.CELL_SIZE/2,
-                dir: index % 4,
+                dir: index % 4, // 0:Up, 1:Right, 2:Down, 3:Left
                 stunTimer: 0,
                 anim: 'IDLE',
                 expression: 'happy'
@@ -62,22 +73,11 @@ export default class PaintParty extends BaseGame {
         this.updateUI();
     }
 
-    // --- JOYSTICK SUPPORT ---
-    onPlayerInput(player, type, payload) {
-        const gp = this.gamePlayers.find(p => p.id === player.id);
-        if (!gp || gp.stunTimer > 0) return;
-
+    onPlayerInput(player, type) {
         if (type === 'PRESS') {
-            gp.dir = (gp.dir + 1) % 4;
-            this.snapToGrid(gp);
-        }
-        else if (type === 'VECTOR' && payload) {
-            // Convert Joystick Vector to 4-Directional Movement
-            if (Math.abs(payload.x) > 0.5) {
-                gp.dir = payload.x > 0 ? 1 : 3;
-                this.snapToGrid(gp);
-            } else if (Math.abs(payload.y) > 0.5) {
-                gp.dir = payload.y > 0 ? 2 : 0;
+            const gp = this.gamePlayers.find(p => p.id === player.id);
+            if (gp && gp.stunTimer <= 0) {
+                gp.dir = (gp.dir + 1) % 4;
                 this.snapToGrid(gp);
             }
         }
@@ -103,7 +103,6 @@ export default class PaintParty extends BaseGame {
     }
 
     onDraw() {
-        // BaseGame handles Timer Draw
         this.updateGameLogic();
         this.drawFloor();
         this.drawPlayers();
@@ -113,6 +112,7 @@ export default class PaintParty extends BaseGame {
 
     updateGameLogic() {
         const p = this.p;
+
         this.gamePlayers.forEach(gp => {
             if (gp.stunTimer > 0) {
                 gp.stunTimer--;
@@ -120,6 +120,7 @@ export default class PaintParty extends BaseGame {
                 gp.expression = 'stunned';
                 return;
             }
+
             gp.anim = 'RUN';
             gp.expression = 'happy';
 
@@ -146,6 +147,7 @@ export default class PaintParty extends BaseGame {
 
             if (gx >= 0 && gx < this.GRID_COLS && gy >= 0 && gy < this.GRID_ROWS) {
                 const currentOwner = this.grid[gx][gy];
+                
                 if (currentOwner !== gp.idx) {
                     if (currentOwner !== -1) {
                         this.players[currentOwner].score--;
@@ -193,42 +195,50 @@ export default class PaintParty extends BaseGame {
         });
     }
 
-    // --- FIX: Round Ending Logic ---
+    // Called automatically by BaseGame when timer hits 0
     onRoundEnd() {
+        // 1. Calculate Round Winner
         const sorted = [...this.players].sort((a, b) => b.score - a.score);
         const winner = sorted[0];
         
-        // Award Meta-Point (Round Win)
+        // 2. Award Round Win
         this.roundWins[winner.id]++;
         
-        // Show message
+        // 3. Track Total Rounds
+        this.totalRoundsPlayed++;
+        
+        // 4. Show message
         this.ui.showTurnMessage(`${winner.name} Wins Round!`, winner.color);
     }
 
+    // --- FIX: END GAME AFTER 3 ROUNDS ---
     checkWinCondition() {
         if (this.mode === 'demo') return false;
         
-        // Game ends after 3 rounds total
-        if (this.state.round >= 3) {
-            // Who has most Round Wins?
-            // (We map index to win count, then find index of max)
+        if (this.totalRoundsPlayed >= 3) {
+            // Find who won the most rounds
+            // (If tie, just pick first found for now)
             let maxWins = -1;
-            let winner = null;
+            let champion = null;
             
             this.players.forEach(p => {
+                // Update final score to reflect Round Wins for the podium display
+                p.score = this.roundWins[p.id]; 
+                
                 if (this.roundWins[p.id] > maxWins) {
                     maxWins = this.roundWins[p.id];
-                    winner = p;
+                    champion = p;
                 }
             });
-            
-            this.state.winner = winner;
+
+            this.state.winner = champion;
             return true;
         }
         return false;
     }
 
     // --- VISUALS ---
+
     drawFloor() {
         const p = this.p;
         p.noStroke();
@@ -260,19 +270,34 @@ export default class PaintParty extends BaseGame {
         this.gamePlayers.forEach(gp => {
             p.push();
             p.translate(gp.x, gp.y);
+
             const rotation = [ -p.PI/2, 0, p.PI/2, p.PI ][gp.dir];
             const bob = Math.sin(p.millis() * 0.02) * 5;
             p.translate(0, bob);
+
             p.fill(0, 30); p.noStroke();
             p.ellipse(0, 30, 60, 25);
+
             this.avatars.applyTransform(gp.anim);
+            
             p.push();
             if (gp.dir === 3) p.scale(-1, 1);
-            this.avatars.draw({ x: 0, y: 0, size: 90, color: gp.config.color, variant: gp.config.variant, accessory: gp.config.accessory, expression: gp.expression, facing: 1 });
+            
+            this.avatars.draw({
+                x: 0, y: 0, 
+                size: 90, 
+                color: gp.config.color, 
+                variant: gp.config.variant, 
+                accessory: gp.config.accessory, 
+                expression: gp.expression,
+                facing: 1
+            });
             p.pop();
+
             p.rotate(rotation);
             p.fill(255, 180);
             p.triangle(50, 0, 20, -20, 20, 20);
+
             p.pop();
         });
     }
@@ -284,20 +309,28 @@ export default class PaintParty extends BaseGame {
             part.life -= 0.05;
             part.x += part.vx;
             part.y += part.vy;
-            if (part.life <= 0) { this.particles.splice(i, 1); } 
-            else { p.fill(part.color); p.noStroke(); p.circle(part.x, part.y, part.size * part.life); }
+            
+            if (part.life <= 0) {
+                this.particles.splice(i, 1);
+            } else {
+                p.fill(part.color);
+                p.noStroke();
+                p.circle(part.x, part.y, part.size * part.life);
+            }
         }
     }
 
     drawUIOverlay() {
         const p = this.p;
         const timeLeft = Math.ceil(this.state.timer / 1000);
+        
         p.push();
         p.translate(this.CX, 60);
         p.fill(255); 
         p.stroke(0, 50); p.strokeWeight(4);
         p.rectMode(p.CENTER);
         p.rect(0, 0, 140, 80, 20);
+        
         p.fill(timeLeft <= 10 ? '#e74c3c' : '#2c3e50');
         p.noStroke();
         p.textSize(50);
