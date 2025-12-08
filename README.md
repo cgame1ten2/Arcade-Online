@@ -3,7 +3,7 @@
 **A Hybrid Local/Remote Social Gaming Platform.**
 
 > **COPYRIGHT NOTICE:**  
-> Copyright © 2025 [Your Name/Company]. All Rights Reserved.  
+> Copyright © 2025 Caden Gamache. All Rights Reserved.  
 > This source code is proprietary. Unauthorized copying, distribution, or modification of this software is strictly prohibited. See `CREDITS.md` for open-source license attributions.
 
 ---
@@ -85,3 +85,4 @@ New games are added via `src/GameRegistry.js`.
 
 This project source code is **Proprietary**.
 See `CREDITS.md` for a full list of open-source libraries used and their respective licenses.
+
