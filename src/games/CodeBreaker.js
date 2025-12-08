@@ -7,14 +7,16 @@ export default class CodeBreaker extends BaseGame {
 
     onSetup() {
         // --- GAME RULES ---
+        // First to 3 Points wins the Game.
         this.config.winCondition = 'SCORE';
         this.config.winValue = 3;
 
-        // We handle round flow manually
+        // We handle round flow manually to allow infinite guesses per round
         this.config.roundEndCriteria = 'NONE';
         this.config.livesPerRound = 1;
         this.config.eliminateOnDeath = false;
 
+        // Disable auto-loop UI because we manage the specific "Winner Found" popup
         this.config.showRoundResultUI = false;
 
         this.avatars = new AvatarSystem(this.p);
@@ -31,13 +33,13 @@ export default class CodeBreaker extends BaseGame {
     onRoundStart() {
         const now = this.p.millis();
 
-        // 1. HARD RESET (New Secret Number)
-        // Occurs when someone correctly guessed the previous number
+        // Only pick a new number if someone actually won the previous round
         if (this.needNewSecret) {
             this.secretNumber = Math.floor(this.p.random(0, 100));
             this.needNewSecret = false;
-            this.activeJudges = []; // Clear robots only on new number
+            this.activeJudges = []; // Clear judges only on fresh game
 
+            // Hard Reset Players for fresh round
             this.playerStates = this.players.map((p, i) => ({
                 id: p.id,
                 config: p,
@@ -53,18 +55,16 @@ export default class CodeBreaker extends BaseGame {
                 lastRoundGuess: null,
                 lastRoundFeedback: null 
             }));
-        } 
-        // 2. SOFT RESET (Same Secret Number)
-        // Occurs when nobody guessed it correctly
-        else {
+        } else {
+            // Soft Reset: Keep previous guess/feedback visible
             this.gameState = 'GUESSING';
             this.playerStates.forEach(ps => {
-                ps.phase = 'tens';
+                ps.phase = 'tens'; // Force reset to start
                 ps.digit = 0;
-                ps.digitTimer = now; // IMPORTANT: Reset timer so cycling starts fresh
-                // Keep lastRoundFeedback intact for hints!
+                ps.digitTimer = now; // Critical fix: Sync timer to now so it spins immediately
+                // Keep lastRoundFeedback intact!
             });
-            // Do NOT clear activeJudges so players can see previous hints
+            // Do NOT clear activeJudges here, so they stay up while guessing
         }
     }
 
@@ -102,8 +102,6 @@ export default class CodeBreaker extends BaseGame {
 
         this.playerStates.forEach(ps => {
             if (ps.phase === 'locked' || ps.phase === 'done') return;
-            
-            // Cycle numbers
             if (p.millis() - ps.digitTimer > interval) {
                 ps.digit = (ps.digit + 1) % 10;
                 ps.digitTimer = p.millis();
@@ -137,7 +135,7 @@ export default class CodeBreaker extends BaseGame {
     }
 
     evaluateGuesses() {
-        // Clear old robots before showing new results
+        // Now we clear and rebuild judges for the new result
         this.activeJudges = [];
 
         let exactMatch = false;
@@ -183,6 +181,7 @@ export default class CodeBreaker extends BaseGame {
         // 3. Logic Branch
         if (exactMatch) {
             this.playSound('win');
+
             this.playerStates.forEach(ps => {
                 if (ps.diff === 0) {
                     const pObj = this.players[ps.index];
@@ -190,6 +189,7 @@ export default class CodeBreaker extends BaseGame {
                 }
             });
             this.updateUI();
+
             this.needNewSecret = true; 
 
             setTimeout(() => {
@@ -204,7 +204,7 @@ export default class CodeBreaker extends BaseGame {
 
         } else {
             this.playSound('bump');
-            this.needNewSecret = false; // Same number next time
+            this.needNewSecret = false; 
 
             setTimeout(() => {
                 this.startNewRound();
@@ -268,6 +268,7 @@ export default class CodeBreaker extends BaseGame {
                 expression: exp
             });
 
+            // Draw Feedback (Arrows/Win)
             if (ps.lastRoundFeedback) {
                 p.push();
                 p.translate(0, 600);
