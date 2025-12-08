@@ -7,6 +7,7 @@ export default class PaintParty extends BaseGame {
 
     onSetup() {
         // --- GAME RULES ---
+        // Configured for ONE ROUND ONLY -> PODIUM
         this.config.winCondition = 'TIME'; 
         this.config.roundDuration = 45000; // 45 Seconds
         
@@ -25,18 +26,15 @@ export default class PaintParty extends BaseGame {
         this.avatars = new AvatarSystem(this.p);
         this.grid = []; 
         this.particles = [];
-        
-        // Track Round Wins separately 
-        this.roundWins = this.players.map(() => 0); 
     }
 
     onRoundStart() {
         this.particles = [];
         
-        // Reset Tile Scores for the new round
+        // 1. Reset Scores (used as Tile Count)
         this.players.forEach(p => p.score = 0);
         
-        // Initialize Grid
+        // 2. Initialize Grid
         this.grid = [];
         for (let x = 0; x < this.GRID_COLS; x++) {
             this.grid[x] = [];
@@ -45,11 +43,12 @@ export default class PaintParty extends BaseGame {
             }
         }
 
-        // Spawn Players
+        // 3. Spawn Players
         this.gamePlayers = this.players.map((basePlayer, index) => {
             const gx = this.p.floor(this.p.random(1, this.GRID_COLS - 1));
             const gy = this.p.floor(this.p.random(1, this.GRID_ROWS - 1));
             
+            // Paint starting tile
             this.grid[gx][gy] = index;
             basePlayer.score = 1;
 
@@ -89,8 +88,10 @@ export default class PaintParty extends BaseGame {
     runDemoAI() {
         this.gamePlayers.forEach(gp => {
             if (gp.stunTimer > 0) return;
+
             const lookX = Math.floor(gp.x / this.CELL_SIZE) + (gp.dir === 1 ? 1 : gp.dir === 3 ? -1 : 0);
             const lookY = Math.floor(gp.y / this.CELL_SIZE) + (gp.dir === 2 ? 1 : gp.dir === 0 ? -1 : 0);
+
             const hitWall = lookX < 0 || lookX >= this.GRID_COLS || lookY < 0 || lookY >= this.GRID_ROWS;
             
             if (hitWall || this.p.random() < 0.03) {
@@ -101,6 +102,7 @@ export default class PaintParty extends BaseGame {
 
     onDraw() {
         this.updateGameLogic();
+
         this.drawFloor();
         this.drawPlayers();
         this.drawParticles();
@@ -144,13 +146,16 @@ export default class PaintParty extends BaseGame {
 
             if (gx >= 0 && gx < this.GRID_COLS && gy >= 0 && gy < this.GRID_ROWS) {
                 const currentOwner = this.grid[gx][gy];
+                
                 if (currentOwner !== gp.idx) {
                     if (currentOwner !== -1) {
                         this.players[currentOwner].score--;
                         if (p.frameCount % 15 === 0) this.playSound('pop');
                     }
+                    
                     this.grid[gx][gy] = gp.idx;
                     this.players[gp.idx].score++;
+                    
                     this.spawnPaintParticles(gp.x, gp.y, gp.config.color);
                     this.updateUI(); 
                 }
@@ -165,7 +170,7 @@ export default class PaintParty extends BaseGame {
                     this.stunPlayer(other);
                     gp.dir = (gp.dir + 2) % 4;
                     other.dir = (other.dir + 2) % 4;
-                    gp.x -= (other.x - gp.x) * 0.5; 
+                    gp.x -= (other.x - gp.x) * 0.5;
                     gp.y -= (other.y - gp.y) * 0.5;
                 }
             });
@@ -191,41 +196,15 @@ export default class PaintParty extends BaseGame {
         });
     }
 
-    // Called automatically by BaseGame when timer hits 0
-    onRoundEnd() {
-        const sorted = [...this.players].sort((a, b) => b.score - a.score);
-        const winner = sorted[0];
-        this.roundWins[winner.id]++;
-        this.ui.showTurnMessage(`${winner.name} Wins Round!`, winner.color);
-    }
-
-    // --- FIX: Strict 3 Round Limit ---
+    // --- OVERRIDE: FORCE GAME OVER AFTER 1 ROUND ---
     checkWinCondition() {
         if (this.mode === 'demo') return false;
         
-        // BaseGame increments round automatically on start.
-        // If we just finished round 3 (state.round is 3), we are done.
-        
-        if (this.state.round >= 3) {
-            // Determine Overall Winner based on Round Wins
-            let maxWins = -1;
-            let winner = null;
-            
-            this.players.forEach(p => {
-                const wins = this.roundWins[p.id];
-                // Update final score for the podium (it expects p.score to be the determining factor)
-                p.score = wins; 
-                
-                if (wins > maxWins) {
-                    maxWins = wins;
-                    winner = p;
-                }
-            });
-            
-            this.state.winner = winner;
-            return true;
-        }
-        return false;
+        // This function is called by BaseGame.endRound().
+        // If we return TRUE, it goes to Podium.
+        // If we return FALSE, it goes to Next Round.
+        // We want Podium immediately.
+        return true; 
     }
 
     drawFloor() {
@@ -259,19 +238,34 @@ export default class PaintParty extends BaseGame {
         this.gamePlayers.forEach(gp => {
             p.push();
             p.translate(gp.x, gp.y);
+
             const rotation = [ -p.PI/2, 0, p.PI/2, p.PI ][gp.dir];
             const bob = Math.sin(p.millis() * 0.02) * 5;
             p.translate(0, bob);
+
             p.fill(0, 30); p.noStroke();
             p.ellipse(0, 30, 60, 25);
+
             this.avatars.applyTransform(gp.anim);
+            
             p.push();
             if (gp.dir === 3) p.scale(-1, 1);
-            this.avatars.draw({ x: 0, y: 0, size: 90, color: gp.config.color, variant: gp.config.variant, accessory: gp.config.accessory, expression: gp.expression, facing: 1 });
+            
+            this.avatars.draw({
+                x: 0, y: 0, 
+                size: 90, 
+                color: gp.config.color, 
+                variant: gp.config.variant, 
+                accessory: gp.config.accessory, 
+                expression: gp.expression,
+                facing: 1
+            });
             p.pop();
+
             p.rotate(rotation);
             p.fill(255, 180);
             p.triangle(50, 0, 20, -20, 20, 20);
+
             p.pop();
         });
     }
@@ -283,22 +277,33 @@ export default class PaintParty extends BaseGame {
             part.life -= 0.05;
             part.x += part.vx;
             part.y += part.vy;
-            if (part.life <= 0) { this.particles.splice(i, 1); } 
-            else { p.fill(part.color); p.noStroke(); p.circle(part.x, part.y, part.size * part.life); }
+            
+            if (part.life <= 0) {
+                this.particles.splice(i, 1);
+            } else {
+                p.fill(part.color);
+                p.noStroke();
+                p.circle(part.x, part.y, part.size * part.life);
+            }
         }
     }
 
     drawUIOverlay() {
         const p = this.p;
         const timeLeft = Math.ceil(this.state.timer / 1000);
+        
         p.push();
         p.translate(this.CX, 60);
-        p.fill(255); p.stroke(0, 50); p.strokeWeight(4);
+        p.fill(255); 
+        p.stroke(0, 50); p.strokeWeight(4);
         p.rectMode(p.CENTER);
         p.rect(0, 0, 140, 80, 20);
+        
         p.fill(timeLeft <= 10 ? '#e74c3c' : '#2c3e50');
         p.noStroke();
-        p.textSize(50); p.textAlign(p.CENTER, p.CENTER); p.textStyle(p.BOLD);
+        p.textSize(50);
+        p.textAlign(p.CENTER, p.CENTER);
+        p.textStyle(p.BOLD);
         p.text(timeLeft, 0, 5);
         p.pop();
     }
