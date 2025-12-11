@@ -4,12 +4,13 @@ import AvatarSystem from '../core/AvatarSystem.js';
 export default class CrateStackers extends BaseGame {
 
     onSetup() {
-        // --- GAME RULES: LAST MAN STANDING ---
-        this.config.winCondition = 'SURVIVAL'; 
-        this.config.roundResetType = 'ELIMINATION'; // Damage persists, dead players stay dead
-        this.config.roundEndCriteria = 'NONE'; // Don't reset round on death, keep going until 1 survivor
+        // --- RULES: SURVIVAL ---
+        // Score = Rounds Survived (or Penalties Avoided)
+        this.config.winCondition = 'SCORE'; 
+        this.config.winValue = 10; // First to 10 points wins game
         
-        this.config.livesPerRound = 3; // 3 Hearts
+        this.config.roundEndCriteria = 'NONE'; 
+        this.config.livesPerRound = 3; 
         this.config.eliminateOnDeath = true; 
         
         this.config.turnBased = true;
@@ -69,7 +70,6 @@ export default class CrateStackers extends BaseGame {
         this.targetCamY = 0;
         this.clawOpenAmount = 0;
 
-        // Ground 
         this.ground = Matter.Bodies.rectangle(this.CX, this.V_HEIGHT - 50, 900, 90, {
             isStatic: true, friction: 1.0, label: 'ground'
         });
@@ -99,7 +99,6 @@ export default class CrateStackers extends BaseGame {
         const p = this.p;
         Matter.Engine.update(this.engine, 1000 / 60);
 
-        // Camera Logic
         if (this.stackState === 'TOWER_FALLEN') {
             this.camY = p.lerp(this.camY, 0, 0.15); 
         } else {
@@ -216,8 +215,8 @@ export default class CrateStackers extends BaseGame {
             this.clawOpenAmount = 0;
             this.updateCameraTarget();
             
-            // NOTE: We do NOT award points here anymore. 
-            // Points are for SURVIVAL, awarded in triggerCollapse() to everyone else.
+            // Note: We REMOVED awarding score for successful drop here.
+            // Points only awarded for survival now.
             
             this.nextTurn();
             setTimeout(() => this.spawnNextBlock(), 50);
@@ -243,11 +242,9 @@ export default class CrateStackers extends BaseGame {
             const pos = s.body.position;
 
             if (pos.y > deathY || pos.x < -300 || pos.x > this.V_WIDTH + 300) {
-                
                 if (this.stackState !== 'TOWER_FALLEN') {
                     this.triggerCollapse();
                 }
-
                 this.explodeBlock(s);
                 Matter.Composite.remove(this.world, s.body);
                 this.shapes.splice(i, 1);
@@ -265,28 +262,32 @@ export default class CrateStackers extends BaseGame {
 
         const culpritIdx = (this.lastDropperIdx !== -1) ? this.lastDropperIdx : this.state.activePlayerIndex;
         
-        // --- SURVIVOR BONUS ---
-        // Everyone EXCEPT the culprit gets a point for surviving the collapse.
-        this.players.forEach((p, idx) => {
-            if (!p.isEliminated && !p.isPermEliminated && idx !== culpritIdx) {
+        // 1. Punish Culprit (Lose Life)
+        this.eliminatePlayer(culpritIdx);
+
+        // 2. REWARD SURVIVORS
+        // Everyone except the culprit gets +1 point
+        this.players.forEach(p => {
+            if (p.id !== this.players[culpritIdx].id && !p.isEliminated) {
                 p.score++;
             }
         });
-        this.updateUI();
-        // ----------------------
-
-        this.eliminatePlayer(culpritIdx);
+        this.updateUI(); // Show updated scores immediately
 
         this.playSound('crash');
         this.shake(30, 40);
 
-        setTimeout(() => {
-            // Only soft reset if game isn't over yet
-            // BaseGame state might change if eliminatePlayer triggered win condition
-            if (this.state.phase === 'PLAYING' || this.state.phase === 'INTRO') {
-                this.softReset();
-            }
-        }, 3500);
+        // Check if game ended due to the elimination
+        // BaseGame checks this inside eliminatePlayer, but the score update might trigger a win too.
+        if (this.checkWinCondition()) {
+            setTimeout(() => this.finishGame(), 2000);
+        } else {
+            setTimeout(() => {
+                if (this.state.phase === 'PLAYING' || this.state.phase === 'INTRO') {
+                    this.softReset();
+                }
+            }, 3500);
+        }
     }
 
     drawCrane(isOpen) {
@@ -353,6 +354,7 @@ export default class CrateStackers extends BaseGame {
         if (!this.ground) return;
         p.push();
         p.translate(this.ground.position.x, this.ground.position.y);
+        
         p.rotate(this.ground.angle);
 
         p.noStroke(); p.fill('#7f8c8d'); p.rectMode(p.CENTER); 
