@@ -1,3 +1,5 @@
+--- START OF FILE CrateStackers.js ---
+
 import BaseGame from './BaseGame.js';
 import AvatarSystem from '../core/AvatarSystem.js';
 
@@ -5,9 +7,9 @@ export default class CrateStackers extends BaseGame {
 
     onSetup() {
         // --- GAME RULES ---
-        // Survival Mode: Play until 1 player has lives left.
-        this.config.winCondition = 'SURVIVAL'; 
-        this.config.roundResetType = 'ELIMINATION'; 
+        // We use 'SCORE' mode for the Podium to pick the winner correctly.
+        // But we handle the end condition manually via Elimination check.
+        this.config.winCondition = 'CUSTOM'; 
         this.config.roundEndCriteria = 'NONE'; 
         
         this.config.livesPerRound = 3; 
@@ -16,7 +18,6 @@ export default class CrateStackers extends BaseGame {
         this.config.turnBased = true;
         this.config.turnBasedBackgroundColor = true;
 
-        // --- CONSTANTS ---
         this.CRANE_SPEED = 0.03;
         this.CRANE_WIDTH = 1400; 
         this.BLOCK_BASE_SIZE = 180; 
@@ -41,7 +42,6 @@ export default class CrateStackers extends BaseGame {
         this.settleTimer = 0;
         this.camY = 0;
         this.targetCamY = 0;
-        
         this.lastDropperIdx = -1; 
 
         Events.on(this.engine, 'collisionStart', (event) => {
@@ -122,7 +122,6 @@ export default class CrateStackers extends BaseGame {
         }
 
         p.pop();
-        
         this.checkFall();
     }
 
@@ -194,9 +193,7 @@ export default class CrateStackers extends BaseGame {
 
         this.shapes.push({ body: this.activeBlock, config: this.activeBlockConfig });
         this.activeBlock = null;
-        
         this.lastDropperIdx = this.state.activePlayerIndex;
-
         this.stackState = 'DROPPING';
         this.settleTimer = this.p.millis() + 4000; 
     }
@@ -210,10 +207,12 @@ export default class CrateStackers extends BaseGame {
         const angularSpeed = Math.abs(lastShape.body.angularVelocity);
 
         if ((speed < 0.15 && angularSpeed < 0.02 && p.millis() > this.settleTimer - 3000) || p.millis() > this.settleTimer) {
-            
             this.stackState = 'AIMING';
             this.clawOpenAmount = 0;
             this.updateCameraTarget();
+            
+            // Note: We do NOT give score for successful drops anymore.
+            // Points come from SURVIVING other people's failures.
             
             this.nextTurn();
             setTimeout(() => this.spawnNextBlock(), 50);
@@ -225,7 +224,6 @@ export default class CrateStackers extends BaseGame {
         this.shapes.forEach(s => {
             if (s.body.position.y < highestY) highestY = s.body.position.y;
         });
-        
         if (highestY < this.V_HEIGHT / 2) {
             this.targetCamY = (this.V_HEIGHT / 2) - highestY;
         }
@@ -233,17 +231,14 @@ export default class CrateStackers extends BaseGame {
 
     checkFall() {
         const deathY = this.V_HEIGHT + 300; 
-        
         for (let i = this.shapes.length - 1; i >= 0; i--) {
             const s = this.shapes[i];
             const pos = s.body.position;
 
             if (pos.y > deathY || pos.x < -300 || pos.x > this.V_WIDTH + 300) {
-                
                 if (this.stackState !== 'TOWER_FALLEN') {
                     this.triggerCollapse();
                 }
-
                 this.explodeBlock(s);
                 Matter.Composite.remove(this.world, s.body);
                 this.shapes.splice(i, 1);
@@ -255,43 +250,44 @@ export default class CrateStackers extends BaseGame {
         this.stackState = 'TOWER_FALLEN';
         this.targetCamY = 0; 
         
-        if (this.ground) {
-            Matter.Body.setStatic(this.ground, false);
-        }
+        if (this.ground) Matter.Body.setStatic(this.ground, false);
 
-        // 1. Identify Culprit
+        // 1. Identify Loser
         const culpritIdx = (this.lastDropperIdx !== -1) ? this.lastDropperIdx : this.state.activePlayerIndex;
         
-        // 2. Punish Culprit (Lose Life)
-        this.eliminatePlayer(culpritIdx);
-
-        // 3. Reward Survivors (Score +1)
+        // 2. Award Points to Survivors
         this.players.forEach((p, idx) => {
-            if (idx !== culpritIdx && !p.isEliminated) {
-                p.score++; 
+            if (!p.isEliminated && idx !== culpritIdx) {
+                p.score++;
             }
         });
-        this.updateUI(); // Refresh top bar
+        this.updateUI();
 
+        // 3. Punish Loser (Lose a life)
+        this.eliminatePlayer(culpritIdx); 
+
+        // 4. Effects
         this.playSound('crash');
         this.shake(30, 40);
 
-        // 4. Reset or End Game
-        setTimeout(() => {
-            // Check if game is over (BaseGame handles elimination check)
-            // But we need to ensure we don't reset if game ended
-            
-            const active = this.players.filter(p => !p.isEliminated);
-            if (active.length <= 1) {
-                // Game Over - Podium handled by BaseGame via eliminatePlayer->checkRoundEnd
-            } else {
-                // Keep playing
-                this.softReset();
-            }
-        }, 3500);
+        // 5. Check if Game Over (Only 1 survivor left)
+        const survivors = this.players.filter(p => !p.isEliminated);
+        
+        if (survivors.length <= 1) {
+            // Game Over! The last person standing wins? 
+            // Or whoever has most points? BaseGame finishGame handles the podium.
+            // We just trigger it.
+            setTimeout(() => this.finishGame(), 3000);
+        } else {
+            // Continue
+            setTimeout(() => {
+                if (this.state.phase === 'PLAYING' || this.state.phase === 'INTRO') {
+                    this.softReset();
+                }
+            }, 3500);
+        }
     }
 
-    // ... (Visuals: drawCrane, drawStack, drawBlockVisuals, drawGround, drawPolygon, explodeBlock, updateAndDrawParticles remain unchanged) ...
     drawCrane(isOpen) {
         if (this.stackState === 'TOWER_FALLEN') return;
 
@@ -356,9 +352,7 @@ export default class CrateStackers extends BaseGame {
         if (!this.ground) return;
         p.push();
         p.translate(this.ground.position.x, this.ground.position.y);
-        
         p.rotate(this.ground.angle);
-
         p.noStroke(); p.fill('#7f8c8d'); p.rectMode(p.CENTER); 
         p.rect(0, 0, 900, 90, 10);
         p.fill('#f1c40f'); 
