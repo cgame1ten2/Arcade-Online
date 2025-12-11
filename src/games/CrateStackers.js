@@ -1,22 +1,21 @@
+--- START OF FILE CrateStackers.js ---
+
 import BaseGame from './BaseGame.js';
 import AvatarSystem from '../core/AvatarSystem.js';
 
 export default class CrateStackers extends BaseGame {
 
     onSetup() {
-        // --- RULES: SURVIVAL ---
-        // Score = Rounds Survived (or Penalties Avoided)
-        this.config.winCondition = 'SCORE'; 
-        this.config.winValue = 10; // First to 10 points wins game
-        
+        this.config.winCondition = 'SURVIVAL'; 
+        this.config.roundResetType = 'ELIMINATION'; 
         this.config.roundEndCriteria = 'NONE'; 
+        
         this.config.livesPerRound = 3; 
         this.config.eliminateOnDeath = true; 
         
         this.config.turnBased = true;
         this.config.turnBasedBackgroundColor = true;
 
-        // --- CONSTANTS ---
         this.CRANE_SPEED = 0.03;
         this.CRANE_WIDTH = 1400; 
         this.BLOCK_BASE_SIZE = 180; 
@@ -215,8 +214,8 @@ export default class CrateStackers extends BaseGame {
             this.clawOpenAmount = 0;
             this.updateCameraTarget();
             
-            // Note: We REMOVED awarding score for successful drop here.
-            // Points only awarded for survival now.
+            // Note: We don't award points for placing blocks anymore.
+            // Points are only awarded to survivors when someone fails.
             
             this.nextTurn();
             setTimeout(() => this.spawnNextBlock(), 50);
@@ -242,9 +241,11 @@ export default class CrateStackers extends BaseGame {
             const pos = s.body.position;
 
             if (pos.y > deathY || pos.x < -300 || pos.x > this.V_WIDTH + 300) {
+                
                 if (this.stackState !== 'TOWER_FALLEN') {
                     this.triggerCollapse();
                 }
+
                 this.explodeBlock(s);
                 Matter.Composite.remove(this.world, s.body);
                 this.shapes.splice(i, 1);
@@ -261,33 +262,28 @@ export default class CrateStackers extends BaseGame {
         }
 
         const culpritIdx = (this.lastDropperIdx !== -1) ? this.lastDropperIdx : this.state.activePlayerIndex;
-        
-        // 1. Punish Culprit (Lose Life)
-        this.eliminatePlayer(culpritIdx);
+        const culprit = this.players[culpritIdx];
 
-        // 2. REWARD SURVIVORS
-        // Everyone except the culprit gets +1 point
+        // --- NEW SCORING LOGIC ---
+        // Give +1 Score to every ACTIVE player who ISN'T the culprit
         this.players.forEach(p => {
-            if (p.id !== this.players[culpritIdx].id && !p.isEliminated) {
+            if (!p.isEliminated && !p.isPermEliminated && p !== culprit) {
                 p.score++;
             }
         });
-        this.updateUI(); // Show updated scores immediately
+        this.updateUI();
+
+        // Eliminations logic
+        this.eliminatePlayer(culpritIdx);
 
         this.playSound('crash');
         this.shake(30, 40);
 
-        // Check if game ended due to the elimination
-        // BaseGame checks this inside eliminatePlayer, but the score update might trigger a win too.
-        if (this.checkWinCondition()) {
-            setTimeout(() => this.finishGame(), 2000);
-        } else {
-            setTimeout(() => {
-                if (this.state.phase === 'PLAYING' || this.state.phase === 'INTRO') {
-                    this.softReset();
-                }
-            }, 3500);
-        }
+        setTimeout(() => {
+            if (this.state.phase === 'PLAYING' || this.state.phase === 'INTRO') {
+                this.softReset();
+            }
+        }, 3500);
     }
 
     drawCrane(isOpen) {
