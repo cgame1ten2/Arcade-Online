@@ -4,21 +4,21 @@ import AvatarSystem from '../core/AvatarSystem.js';
 export default class CrateStackers extends BaseGame {
 
     onSetup() {
-        // --- RULES: LAST MAN STANDING ---
-        this.config.winCondition = 'SURVIVAL';
+        // --- GAME RULES: LAST MAN STANDING ---
+        this.config.winCondition = 'SURVIVAL'; 
         this.config.roundResetType = 'ELIMINATION'; // Damage persists, dead players stay dead
-        this.config.roundEndCriteria = 'NONE'; // Don't reset round on death, keep going
-
+        this.config.roundEndCriteria = 'NONE'; // Don't reset round on death, keep going until 1 survivor
+        
         this.config.livesPerRound = 3; // 3 Hearts
-        this.config.eliminateOnDeath = true;
-
+        this.config.eliminateOnDeath = true; 
+        
         this.config.turnBased = true;
         this.config.turnBasedBackgroundColor = true;
 
         // --- CONSTANTS ---
-        this.CRANE_SPEED = 0.025;
-        this.CRANE_WIDTH = 1400;
-        this.BLOCK_BASE_SIZE = 180;
+        this.CRANE_SPEED = 0.03;
+        this.CRANE_WIDTH = 1400; 
+        this.BLOCK_BASE_SIZE = 180; 
 
         const { Engine, World, Bodies, Composite, Events } = Matter;
         this.engine = Engine.create();
@@ -31,7 +31,7 @@ export default class CrateStackers extends BaseGame {
         this.particles = [];
         this.ground = null;
 
-        this.stackState = 'AIMING';
+        this.stackState = 'AIMING'; 
         this.activeBlock = null;
         this.activeBlockConfig = null;
         this.craneX = this.CX;
@@ -40,9 +40,8 @@ export default class CrateStackers extends BaseGame {
         this.settleTimer = 0;
         this.camY = 0;
         this.targetCamY = 0;
-
-        // Track who touched the tower last for Jenga Rules
-        this.lastDropperIdx = -1;
+        
+        this.lastDropperIdx = -1; 
 
         Events.on(this.engine, 'collisionStart', (event) => {
             event.pairs.forEach(pair => {
@@ -102,14 +101,13 @@ export default class CrateStackers extends BaseGame {
 
         // Camera Logic
         if (this.stackState === 'TOWER_FALLEN') {
-            // Fast Snap to bottom to see explosion
-            this.camY = p.lerp(this.camY, 0, 0.15);
+            this.camY = p.lerp(this.camY, 0, 0.15); 
         } else {
             this.camY = p.lerp(this.camY, this.targetCamY, 0.05);
         }
 
         p.push();
-        p.translate(0, this.camY);
+        p.translate(0, this.camY); 
 
         this.drawGround();
         this.drawStack();
@@ -125,7 +123,7 @@ export default class CrateStackers extends BaseGame {
         }
 
         p.pop();
-
+        
         this.checkFall();
     }
 
@@ -140,16 +138,16 @@ export default class CrateStackers extends BaseGame {
             this.nextTurn();
             return;
         }
-
+        
         const type = this.p.random(['box', 'box', 'hex', 'trap']);
         const scale = this.p.random(0.9, 1.1);
         const size = this.BLOCK_BASE_SIZE * scale;
 
         const x = this.craneX;
-        const y = 250 - this.camY;
+        const y = 250 - this.camY; 
 
         const opts = {
-            isStatic: true, friction: 0.9, restitution: 0.1, density: 0.005,
+            isStatic: true, friction: 0.9, restitution: 0.1, density: 0.005, 
             label: `block-${player.id}`
         };
 
@@ -197,12 +195,11 @@ export default class CrateStackers extends BaseGame {
 
         this.shapes.push({ body: this.activeBlock, config: this.activeBlockConfig });
         this.activeBlock = null;
-
-        // Track who dropped this block for Penalty Logic
+        
         this.lastDropperIdx = this.state.activePlayerIndex;
 
         this.stackState = 'DROPPING';
-        this.settleTimer = this.p.millis() + 4000;
+        this.settleTimer = this.p.millis() + 4000; 
     }
 
     checkSettled() {
@@ -214,18 +211,14 @@ export default class CrateStackers extends BaseGame {
         const angularSpeed = Math.abs(lastShape.body.angularVelocity);
 
         if ((speed < 0.15 && angularSpeed < 0.02 && p.millis() > this.settleTimer - 3000) || p.millis() > this.settleTimer) {
-
+            
             this.stackState = 'AIMING';
             this.clawOpenAmount = 0;
             this.updateCameraTarget();
-
-            // Jenga Rule: Score isn't relevant in Survival, but we track stats anyway
-            const owner = this.players[lastShape.config.ownerIdx];
-            if (owner && !owner.isEliminated) {
-                owner.score++;
-                this.updateUI();
-            }
-
+            
+            // NOTE: We do NOT award points here anymore. 
+            // Points are for SURVIVAL, awarded in triggerCollapse() to everyone else.
+            
             this.nextTurn();
             setTimeout(() => this.spawnNextBlock(), 50);
         }
@@ -236,21 +229,21 @@ export default class CrateStackers extends BaseGame {
         this.shapes.forEach(s => {
             if (s.body.position.y < highestY) highestY = s.body.position.y;
         });
-
+        
         if (highestY < this.V_HEIGHT / 2) {
             this.targetCamY = (this.V_HEIGHT / 2) - highestY;
         }
     }
 
     checkFall() {
-        const deathY = this.V_HEIGHT + 300;
-
+        const deathY = this.V_HEIGHT + 300; 
+        
         for (let i = this.shapes.length - 1; i >= 0; i--) {
             const s = this.shapes[i];
             const pos = s.body.position;
 
             if (pos.y > deathY || pos.x < -300 || pos.x > this.V_WIDTH + 300) {
-
+                
                 if (this.stackState !== 'TOWER_FALLEN') {
                     this.triggerCollapse();
                 }
@@ -264,28 +257,32 @@ export default class CrateStackers extends BaseGame {
 
     triggerCollapse() {
         this.stackState = 'TOWER_FALLEN';
-        this.targetCamY = 0;
-
+        this.targetCamY = 0; 
+        
         if (this.ground) {
             Matter.Body.setStatic(this.ground, false);
         }
 
-        // JENGA LOGIC: Punish the last person to successfully drop a block
-        // Fallback to active player if tower falls immediately at start (ghost wind)
         const culpritIdx = (this.lastDropperIdx !== -1) ? this.lastDropperIdx : this.state.activePlayerIndex;
+        
+        // --- SURVIVOR BONUS ---
+        // Everyone EXCEPT the culprit gets a point for surviving the collapse.
+        this.players.forEach((p, idx) => {
+            if (!p.isEliminated && !p.isPermEliminated && idx !== culpritIdx) {
+                p.score++;
+            }
+        });
+        this.updateUI();
+        // ----------------------
 
         this.eliminatePlayer(culpritIdx);
-
-        // Check if Game Over happened immediately (e.g. last player died)
-        // BaseGame handles this via checkWinCondition inside eliminatePlayer
-        // But we want to ensure the visual collapse happens first.
 
         this.playSound('crash');
         this.shake(30, 40);
 
         setTimeout(() => {
-            // Only reset if the game is still going
-            // If eliminatePlayer triggered game over, BaseGame state will change
+            // Only soft reset if game isn't over yet
+            // BaseGame state might change if eliminatePlayer triggered win condition
             if (this.state.phase === 'PLAYING' || this.state.phase === 'INTRO') {
                 this.softReset();
             }
@@ -298,27 +295,27 @@ export default class CrateStackers extends BaseGame {
         const p = this.p;
         const x = this.craneX;
         const y = 250 - this.camY;
-
+        
         p.push();
         p.stroke(80); p.strokeWeight(8); p.line(x, y - 2000, x, y);
         p.fill(60); p.noStroke(); p.rectMode(p.CENTER); p.rect(x, y - 30, 80, 30, 6);
         p.stroke(50); p.strokeWeight(10); p.noFill(); p.strokeJoin(p.ROUND);
-
+        
         let gripW = this.activeBlockConfig ? this.activeBlockConfig.size / 2 + 15 : 60;
         const openOffset = this.clawOpenAmount * 60;
         const currentW = gripW + openOffset;
 
         p.beginShape(); p.vertex(x - 25, y - 30); p.vertex(x - currentW, y); p.vertex(x - currentW + 15, y + 60); p.endShape();
         p.beginShape(); p.vertex(x + 25, y - 30); p.vertex(x + currentW, y); p.vertex(x + currentW - 15, y + 60); p.endShape();
-
+        
         if (this.activeBlock) { this.drawBlockVisuals(this.activeBlock, this.activeBlockConfig); }
         p.pop();
     }
 
-    drawStack() {
-        this.shapes.forEach(s => {
-            this.drawBlockVisuals(s.body, s.config);
-        });
+    drawStack() { 
+        this.shapes.forEach(s => { 
+            this.drawBlockVisuals(s.body, s.config); 
+        }); 
     }
 
     drawBlockVisuals(body, config) {
@@ -330,12 +327,12 @@ export default class CrateStackers extends BaseGame {
         p.rotate(angle);
         p.fill(config.color);
         p.stroke(255); p.strokeWeight(4);
-
-        if (config.type === 'box') {
-            p.rectMode(p.CENTER); p.rect(0, 0, config.size, config.size, 12);
+        
+        if (config.type === 'box') { 
+            p.rectMode(p.CENTER); p.rect(0, 0, config.size, config.size, 12); 
         }
-        else if (config.type === 'hex') {
-            p.push(); p.rotate(Math.PI / 6); this.drawPolygon(0, 0, config.size / 1.7, 6); p.pop();
+        else if (config.type === 'hex') { 
+            p.push(); p.rotate(Math.PI / 6); this.drawPolygon(0, 0, config.size / 1.7, 6); p.pop(); 
         }
         else if (config.type === 'trap') {
             const w = config.size; const h = config.size; const slope = w * 0.25;
@@ -346,7 +343,7 @@ export default class CrateStackers extends BaseGame {
         if (body.speed > 5) exp = 'stunned';
         if (this.stackState === 'AIMING' && body === this.activeBlock) exp = 'happy';
         if (this.stackState === 'TOWER_FALLEN') exp = 'stunned';
-
+        
         this.avatars.draw({ x: 0, y: 0, size: config.size * 0.65, color: config.color, variant: config.variant, accessory: config.accessory, expression: exp });
         p.pop();
     }
@@ -356,12 +353,11 @@ export default class CrateStackers extends BaseGame {
         if (!this.ground) return;
         p.push();
         p.translate(this.ground.position.x, this.ground.position.y);
-
         p.rotate(this.ground.angle);
 
-        p.noStroke(); p.fill('#7f8c8d'); p.rectMode(p.CENTER);
+        p.noStroke(); p.fill('#7f8c8d'); p.rectMode(p.CENTER); 
         p.rect(0, 0, 900, 90, 10);
-        p.fill('#f1c40f');
+        p.fill('#f1c40f'); 
         for (let i = -420; i < 450; i += 60) p.rect(i, 0, 30, 90);
         p.pop();
     }
@@ -374,7 +370,7 @@ export default class CrateStackers extends BaseGame {
     }
 
     explodeBlock(shape) {
-        this.playSound('pop');
+        this.playSound('pop'); 
         for (let i = 0; i < 20; i++) {
             this.particles.push({
                 x: shape.body.position.x,
