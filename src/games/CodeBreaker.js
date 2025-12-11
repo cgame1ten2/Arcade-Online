@@ -4,63 +4,61 @@ import AvatarSystem from '../core/AvatarSystem.js';
 export default class CodeBreaker extends BaseGame {
 
     onSetup() {
-        // --- GAME RULES ---
-        // First to 5 Points wins the Game.
         this.config.winCondition = 'SCORE'; 
         this.config.winValue = 5; 
-        
-        // We handle round flow manually to allow infinite guesses per round
         this.config.roundEndCriteria = 'NONE'; 
         this.config.livesPerRound = 1;
         this.config.eliminateOnDeath = false;
-        
-        // Disable auto-loop UI because we manage the specific "Winner Found" popup
         this.config.showRoundResultUI = false;
 
         this.avatars = new AvatarSystem(this.p);
-        
         this.secretNumber = 0;
         this.playerStates = [];
         this.activeJudges = [];
-        this.gameState = 'GUESSING'; // GUESSING, REVEAL, ROUND_OVER
-        
-        // Track if we need a new number for the next round
+        this.gameState = 'GUESSING'; 
+        this.wasPerfectWin = false;
         this.needNewSecret = true;
     }
 
     onRoundStart() {
-        // Only pick a new number if someone actually won the previous round
+        const now = this.p.millis();
+
         if (this.needNewSecret) {
             this.secretNumber = Math.floor(this.p.random(0, 100));
-            // console.log("New Secret:", this.secretNumber); // For Debugging
             this.needNewSecret = false;
             this.activeJudges = [];
-            
-            // Hard Reset Players for fresh round
+            this.wasPerfectWin = false; // Reset flag
+
+            // Hard Reset
             this.playerStates = this.players.map((p, i) => ({
                 id: p.id,
                 config: p,
                 index: i,
                 phase: 'tens', 
                 digit: 0,
-                digitTimer: 0,
+                digitTimer: now, // SYNC TIMER
                 tens: 0,
                 ones: 0,
                 guess: null,
                 diff: 100,
                 isClosest: false,
                 lastRoundGuess: null,
-                lastRoundFeedback: null // null, 'low', 'high', 'win'
+                lastRoundFeedback: null
             }));
         } else {
-            // Soft Reset: Keep previous guess/feedback visible so they can deduce
-            this.gameState = 'GUESSING';
+            // Soft Reset
             this.playerStates.forEach(ps => {
                 ps.phase = 'tens';
                 ps.digit = 0;
-                // Keep lastRoundFeedback intact!
+                ps.digitTimer = now; // SYNC TIMER
+                ps.tens = 0;
+                ps.ones = 0;
+                ps.guess = null;
+                // Keep diff/lastRoundGuess for hints
             });
         }
+        
+        this.gameState = 'GUESSING';
     }
 
     onPlayerInput(player, type) {
@@ -79,8 +77,6 @@ export default class CodeBreaker extends BaseGame {
     }
 
     onDraw() {
-        const p = this.p;
-        
         if (this.gameState === 'GUESSING') {
             this.updateSpinners();
             this.checkAllLocked();
@@ -136,7 +132,6 @@ export default class CodeBreaker extends BaseGame {
         let winnerName = "";
         let bestDiff = 100;
 
-        // 1. Calculate Diff & Feedback
         this.playerStates.forEach(ps => {
             const diff = ps.guess - this.secretNumber;
             ps.diff = Math.abs(diff);
@@ -147,15 +142,14 @@ export default class CodeBreaker extends BaseGame {
                 exactMatch = true; 
                 winnerName = ps.config.name;
             }
-            else if (diff < 0) ps.lastRoundFeedback = 'low'; // Guessed low, need UP arrow
-            else ps.lastRoundFeedback = 'high'; // Guessed high, need DOWN arrow
+            else if (diff < 0) ps.lastRoundFeedback = 'low';
+            else ps.lastRoundFeedback = 'high';
 
             if (ps.diff < bestDiff) bestDiff = ps.diff;
             ps.phase = 'done';
             ps.isClosest = false;
         });
 
-        // 2. Determine "Closest" for visual robot (even if not exact)
         const availableW = this.V_WIDTH - 400;
         const colW = availableW / this.playerStates.length;
         const startX = 200;
@@ -172,12 +166,12 @@ export default class CodeBreaker extends BaseGame {
             }
         });
 
-        // 3. Logic Branch
         if (exactMatch) {
-            // --- SOMEONE WON THE ROUND ---
             this.playSound('win');
-            
-            // Award Points (BaseGame handles win condition automatically)
+            this.wasPerfectWin = true;
+            this.needNewSecret = true; // Prepare fresh number
+
+            // Award Point
             this.playerStates.forEach(ps => {
                 if (ps.diff === 0) {
                     const pObj = this.players[ps.index];
@@ -185,31 +179,24 @@ export default class CodeBreaker extends BaseGame {
                 }
             });
             this.updateUI();
-
-            this.needNewSecret = true; // Prepare fresh number for next round
-
-            // Wait 2 seconds to see results, then popup
+            
             setTimeout(() => {
                 if (this.mode !== 'demo') {
-                    // Check if Game is Over first? BaseGame checks this usually.
-                    // But we want to show the specific number reveal.
                     this.ui.showMessage(`Number Found: ${this.secretNumber}!`, `${winnerName} got it!`, "Next Round", () => {
                         this.endRound(); 
                     });
                 } else {
                     this.endRound();
                 }
-            }, 2000);
+            }, 1000);
 
         } else {
-            // --- NO WINNER, CONTINUE GUESSING ---
             this.playSound('bump');
-            this.needNewSecret = false; // Keep same number!
+            this.wasPerfectWin = false;
+            this.needNewSecret = false; // KEEP same number
             
-            // Wait 2 seconds, then let them guess again
-            // We use startNewRound() to trigger the soft reset logic
             setTimeout(() => {
-                this.startNewRound(); 
+                this.startNewRound(); // Soft reset
             }, 2000);
         }
     }
@@ -316,8 +303,6 @@ export default class CodeBreaker extends BaseGame {
             let tVal = ps.phase === 'tens' ? ps.digit : ps.tens;
             let oVal = ps.phase === 'ones' ? ps.digit : (ps.phase === 'tens' ? '-' : ps.ones);
             
-            // If guessing, show digits. If we have feedback, show that instead?
-            // Actually, showing the GUESS is correct during 'done' phase.
             if (ps.phase === 'locked' || ps.phase === 'done') {
                 tVal = Math.floor(ps.guess / 10);
                 oVal = ps.guess % 10;
