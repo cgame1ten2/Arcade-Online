@@ -1,11 +1,11 @@
---- START OF FILE CrateStackers.js ---
-
 import BaseGame from './BaseGame.js';
 import AvatarSystem from '../core/AvatarSystem.js';
 
 export default class CrateStackers extends BaseGame {
 
     onSetup() {
+        // --- GAME RULES ---
+        // Survival Mode: Play until 1 player has lives left.
         this.config.winCondition = 'SURVIVAL'; 
         this.config.roundResetType = 'ELIMINATION'; 
         this.config.roundEndCriteria = 'NONE'; 
@@ -16,6 +16,7 @@ export default class CrateStackers extends BaseGame {
         this.config.turnBased = true;
         this.config.turnBasedBackgroundColor = true;
 
+        // --- CONSTANTS ---
         this.CRANE_SPEED = 0.03;
         this.CRANE_WIDTH = 1400; 
         this.BLOCK_BASE_SIZE = 180; 
@@ -214,9 +215,6 @@ export default class CrateStackers extends BaseGame {
             this.clawOpenAmount = 0;
             this.updateCameraTarget();
             
-            // Note: We don't award points for placing blocks anymore.
-            // Points are only awarded to survivors when someone fails.
-            
             this.nextTurn();
             setTimeout(() => this.spawnNextBlock(), 50);
         }
@@ -261,31 +259,39 @@ export default class CrateStackers extends BaseGame {
             Matter.Body.setStatic(this.ground, false);
         }
 
+        // 1. Identify Culprit
         const culpritIdx = (this.lastDropperIdx !== -1) ? this.lastDropperIdx : this.state.activePlayerIndex;
-        const culprit = this.players[culpritIdx];
+        
+        // 2. Punish Culprit (Lose Life)
+        this.eliminatePlayer(culpritIdx);
 
-        // --- NEW SCORING LOGIC ---
-        // Give +1 Score to every ACTIVE player who ISN'T the culprit
-        this.players.forEach(p => {
-            if (!p.isEliminated && !p.isPermEliminated && p !== culprit) {
-                p.score++;
+        // 3. Reward Survivors (Score +1)
+        this.players.forEach((p, idx) => {
+            if (idx !== culpritIdx && !p.isEliminated) {
+                p.score++; 
             }
         });
-        this.updateUI();
-
-        // Eliminations logic
-        this.eliminatePlayer(culpritIdx);
+        this.updateUI(); // Refresh top bar
 
         this.playSound('crash');
         this.shake(30, 40);
 
+        // 4. Reset or End Game
         setTimeout(() => {
-            if (this.state.phase === 'PLAYING' || this.state.phase === 'INTRO') {
+            // Check if game is over (BaseGame handles elimination check)
+            // But we need to ensure we don't reset if game ended
+            
+            const active = this.players.filter(p => !p.isEliminated);
+            if (active.length <= 1) {
+                // Game Over - Podium handled by BaseGame via eliminatePlayer->checkRoundEnd
+            } else {
+                // Keep playing
                 this.softReset();
             }
         }, 3500);
     }
 
+    // ... (Visuals: drawCrane, drawStack, drawBlockVisuals, drawGround, drawPolygon, explodeBlock, updateAndDrawParticles remain unchanged) ...
     drawCrane(isOpen) {
         if (this.stackState === 'TOWER_FALLEN') return;
 
