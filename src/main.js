@@ -64,13 +64,31 @@ function init() {
                 hostBtnRef.style.background = '#2ecc71';
                 hostBtnRef.style.borderColor = '#27ae60';
                 hostBtnRef.onclick = null; 
-                hostBtnRef.disabled = false;
                 
-                hostBtn.onclick = () => {
-                    audio.play('click');
-                    showConnectPopup(code);
-                };
-                showConnectPopup(code);
+                const baseUrl = window.location.href.split('?')[0].split('#')[0].replace(/\/$/, "");
+                const joinUrl = `${baseUrl}/mobile.html?room=${code}`;
+                
+                ui.showMessage(
+                    `Room Code: ${code}`, 
+                    `Scan to Join:<br><div id="host-qr-target" style="display:flex; justify-content:center; margin:15px auto; background:white; padding:10px; width:fit-content; border-radius:8px;"></div>`, 
+                    "OK", 
+                    () => ui.hideMessage()
+                );
+
+                setTimeout(() => {
+                    const target = document.getElementById('host-qr-target');
+                    if(target && window.QRCode) {
+                        target.innerHTML = ''; 
+                        new QRCode(target, {
+                            text: joinUrl,
+                            width: 128,
+                            height: 128,
+                            colorDark : "#2c3e50",
+                            colorLight : "#ffffff",
+                            correctLevel : QRCode.CorrectLevel.H
+                        });
+                    }
+                }, 100);
             };
         };
         mainHeader.insertBefore(hostBtn, setupBtn);
@@ -146,24 +164,6 @@ function init() {
     attachGlobalSoundListeners();
 }
 
-function showConnectPopup(code) {
-    const baseUrl = window.location.href.split('?')[0].split('#')[0].replace(/\/$/, "");
-    const joinUrl = `${baseUrl}/mobile.html?room=${code}`;
-    ui.showMessage(
-        `Room Code: ${code}`, 
-        `Scan to Join:<br><div id="host-qr-target" style="display:flex; justify-content:center; margin:15px auto; background:white; padding:10px; width:fit-content; border-radius:8px; box-shadow:0 4px 10px rgba(0,0,0,0.1);"></div><p style="font-size:0.9em; opacity:0.7;">Or visit mobile.html</p>`, 
-        "OK", 
-        () => ui.hideMessage()
-    );
-    setTimeout(() => {
-        const target = document.getElementById('host-qr-target');
-        if(target && window.QRCode) {
-            target.innerHTML = ''; 
-            new QRCode(target, { text: joinUrl, width: 150, height: 150, colorDark : "#2c3e50", colorLight : "#ffffff", correctLevel : QRCode.CorrectLevel.M });
-        }
-    }, 100);
-}
-
 function updateHostButton(code) {
     if(!hostBtnRef) return;
     const count = players.getActivePlayers().filter(p => p.type === 'mobile').length;
@@ -179,15 +179,33 @@ function renderHub() {
     createTournamentBanner();
     GAME_LIST.forEach(game => createGameCard(game));
     audio.setTrack('lobby');
+    
     const gameNames = GAME_LIST.map(g => ({ id: g.id, title: g.title }));
     network.broadcastState('LOBBY', 'IDLE', { gameList: gameNames });
+
     setTimeout(() => resumeDemos(), 50);
 }
 
 function createTournamentBanner() {
     const banner = document.createElement('div');
     banner.id = 'tournament-banner';
-    banner.innerHTML = `<div class="banner-content"><svg width="60" height="60" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"></path><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"></path><path d="M4 22h16"></path><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"></path><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"></path><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"></path></svg><div class="banner-text"><h3>TOURNAMENT MODE</h3><p>Play a series of random games to crown a champion!</p></div><button class="banner-btn">START</button></div>`;
+    banner.innerHTML = `
+        <div class="banner-content">
+            <svg width="60" height="60" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"></path>
+                <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"></path>
+                <path d="M4 22h16"></path>
+                <path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"></path>
+                <path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"></path>
+                <path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"></path>
+            </svg>
+            <div class="banner-text">
+                <h3>TOURNAMENT MODE</h3>
+                <p>Play a series of random games to crown a champion!</p>
+            </div>
+            <button class="banner-btn">START</button>
+        </div>
+    `;
     banner.onclick = () => showTournamentSetup();
     hubGrid.appendChild(banner);
 }
@@ -214,10 +232,12 @@ function enterGameMode(gameConfig) {
     audio.setTrack('game');
     gameStage.classList.remove('hidden');
     pauseDemos();
+
     currentScreenType = 'CONTROLLER'; 
     if (gameConfig && gameConfig.id === 'avatar-match') {
         currentScreenType = 'TOUCHPAD'; 
     }
+    
     network.broadcastState(currentScreenType, 'PLAYING');
 }
 
@@ -234,7 +254,18 @@ function resumeDemos() { demoInstances.forEach(p5inst => p5inst.loop()); }
 function showTournamentSetup() {
     audio.play('click');
     network.broadcastState('LOBBY', 'IDLE'); 
-    ui.centerMessage.innerHTML = `<div class="message-card"><h1>Tournament Setup</h1><p>How many rounds?</p><div class="tourney-opts"><button class="tourney-btn" onclick="window.startTourney(3)"><span>3</span>Rounds</button><button class="tourney-btn" onclick="window.startTourney(5)"><span>5</span>Rounds</button><button class="tourney-btn" onclick="window.startTourney(7)"><span>7</span>Rounds</button></div><button id="cancel-tourney" class="secondary-btn">Cancel</button></div>`;
+    ui.centerMessage.innerHTML = `
+        <div class="message-card">
+            <h1>Tournament Setup</h1>
+            <p>How many rounds?</p>
+            <div class="tourney-opts">
+                <button class="tourney-btn" onclick="window.startTourney(3)"><span>3</span>Rounds</button>
+                <button class="tourney-btn" onclick="window.startTourney(5)"><span>5</span>Rounds</button>
+                <button class="tourney-btn" onclick="window.startTourney(7)"><span>7</span>Rounds</button>
+            </div>
+            <button id="cancel-tourney" class="secondary-btn">Cancel</button>
+        </div>
+    `;
     ui.centerMessage.classList.add('visible');
     window.startTourney = (rounds) => {
         ui.hideMessage();
@@ -252,12 +283,14 @@ function renderVisualLobby() {
     const controls = document.querySelector('.lobby-controls');
     const existingSettings = document.querySelector('.lobby-settings');
     if (existingSettings) existingSettings.remove();
+    
     const settingsDiv = document.createElement('div');
     settingsDiv.className = 'lobby-settings';
     settingsDiv.innerHTML = `<button id="toggle-music" class="setting-toggle ${audio.musicEnabled ? 'active' : ''}">Music: ${audio.musicEnabled ? 'ON' : 'OFF'}</button><button id="toggle-sfx" class="setting-toggle ${audio.sfxEnabled ? 'active' : ''}">SFX: ${audio.sfxEnabled ? 'ON' : 'OFF'}</button>`;
     controls.insertBefore(settingsDiv, controls.firstChild);
     document.getElementById('toggle-music').onclick = (e) => { const newState = !audio.musicEnabled; audio.toggleMusic(newState); e.target.textContent = `Music: ${newState ? 'ON' : 'OFF'}`; e.target.classList.toggle('active', newState); audio.play('click'); if (newState) audio.setTrack('config'); };
     document.getElementById('toggle-sfx').onclick = (e) => { const newState = !audio.sfxEnabled; audio.toggleSfx(newState); e.target.textContent = `SFX: ${newState ? 'ON' : 'OFF'}`; e.target.classList.toggle('active', newState); audio.play('click'); };
+    
     playerConfigGrid.innerHTML = '';
     const activePlayers = players.getActivePlayers();
     activePlayers.forEach((p, index) => {
@@ -288,65 +321,61 @@ function renderVisualLobby() {
     bindLobbyInputs();
 }
 
-/**
- * FIXED BINDINGS: Uses Player ID instead of Array Index
- */
 function bindLobbyInputs() {
     const accessories = AvatarSystem.ACCESSORIES;
 
-    // Helper: Get Player by Index, then update by ID
-    const getP = (e) => players.getPlayer(e.target.dataset.idx);
-
+    // --- FIX: GET PLAYER BY INDEX THEN USE ID ---
     document.querySelectorAll('.name-input').forEach(el => {
         el.addEventListener('input', (e) => {
             if(e.target.disabled) return;
-            const p = getP(e);
-            if(p) players.updatePlayer(p.id, { name: e.target.value });
+            const idx = parseInt(e.target.dataset.idx); // Get Index
+            const p = players.getPlayer(idx); // Get Player
+            players.updatePlayer(p.id, { name: e.target.value }); // Update by ID
         });
     });
 
     document.querySelectorAll('.hue-slider').forEach(el => {
         el.addEventListener('input', (e) => {
             if(e.target.disabled) return;
-            const hue = e.target.value;
+            const idx = parseInt(e.target.dataset.idx);
+            const p = players.getPlayer(idx);
+            const hue = parseInt(e.target.value);
             const color = hslToHex(hue, 85, 60);
-            const p = getP(e);
-            if(p) players.updatePlayer(p.id, { color: color });
+            players.updatePlayer(p.id, { color: color });
         });
     });
 
+    // Buttons were already working, but for consistency:
     document.querySelectorAll('.var-btn').forEach(el => {
         el.addEventListener('click', (e) => {
             if(e.target.disabled) return;
-            const p = getP(e);
-            if(p) {
-                const newVar = p.variant === 'default' ? 'feminine' : 'default';
-                players.updatePlayer(p.id, { variant: newVar });
-                e.target.textContent = newVar === 'default' ? 'Boy' : 'Girl';
-                audio.play('click');
-            }
+            const idx = parseInt(e.target.dataset.idx);
+            const p = players.getPlayer(idx);
+            const newVar = p.variant === 'default' ? 'feminine' : 'default';
+            players.updatePlayer(p.id, { variant: newVar });
+            e.target.textContent = newVar === 'default' ? 'Boy' : 'Girl';
+            audio.play('click');
         });
     });
 
     document.querySelectorAll('.acc-btn').forEach(el => {
         el.addEventListener('click', (e) => {
             if(e.target.disabled) return;
-            const p = getP(e);
-            if(p) {
-                let currIdx = accessories.indexOf(p.accessory);
-                if (currIdx === -1) currIdx = 0;
-                let nextAcc = accessories[(currIdx + 1) % accessories.length];
-                players.updatePlayer(p.id, { accessory: nextAcc });
-                e.target.textContent = nextAcc;
-                audio.play('click');
-            }
+            const idx = parseInt(e.target.dataset.idx);
+            const p = players.getPlayer(idx);
+            let currIdx = accessories.indexOf(p.accessory);
+            if (currIdx === -1) currIdx = 0;
+            let nextAcc = accessories[(currIdx + 1) % accessories.length];
+            players.updatePlayer(p.id, { accessory: nextAcc });
+            e.target.textContent = nextAcc;
+            audio.play('click');
         });
     });
 
     document.querySelectorAll('.del-btn').forEach(el => {
         el.addEventListener('click', (e) => {
             audio.play('click');
-            players.removePlayer(e.target.dataset.idx); // removePlayer handles indices correctly
+            players.removePlayer(e.target.dataset.idx);
             renderVisualLobby();
         });
     });
