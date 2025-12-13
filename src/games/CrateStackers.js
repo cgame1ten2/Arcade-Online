@@ -5,8 +5,6 @@ export default class CrateStackers extends BaseGame {
 
     onSetup() {
         // --- GAME RULES ---
-        // SURVIVAL: Last player with lives wins the game instance.
-        // SCORE: Used for ranking on the podium (Survival Points).
         this.config.winCondition = 'SURVIVAL'; 
         this.config.roundResetType = 'ELIMINATION'; 
         this.config.roundEndCriteria = 'NONE'; 
@@ -216,6 +214,15 @@ export default class CrateStackers extends BaseGame {
             this.clawOpenAmount = 0;
             this.updateCameraTarget();
             
+            const owner = this.players[lastShape.config.ownerIdx];
+            if (owner && !owner.isEliminated) {
+                // In survival mode, score = survival points
+                // We update it when OTHERS fail, not when you succeed.
+                // But we update UI here just in case turn changed
+                this.updateUI(); 
+                if (this.checkWinCondition()) return;
+            }
+            
             this.nextTurn();
             setTimeout(() => this.spawnNextBlock(), 50);
         }
@@ -260,27 +267,21 @@ export default class CrateStackers extends BaseGame {
             Matter.Body.setStatic(this.ground, false);
         }
 
-        // 1. Identify Culprit
         const culpritIdx = (this.lastDropperIdx !== -1) ? this.lastDropperIdx : this.state.activePlayerIndex;
         
-        // 2. Award Points to Survivors (Everyone EXCEPT culprit)
+        // Award Points to Survivors
         this.players.forEach((p, idx) => {
             if (idx !== culpritIdx && !p.isEliminated) {
                 p.score++;
             }
         });
-        // We do NOT call updateUI() here because BaseGame will do it inside eliminatePlayer,
-        // but we want the score update to register before the potential Game Over check.
-        // Actually, BaseGame handles UI inside eliminatePlayer.
         
-        // 3. Punish Culprit (This might trigger Game Over if only 1 left)
         this.eliminatePlayer(culpritIdx);
 
         this.playSound('crash');
         this.shake(30, 40);
 
         setTimeout(() => {
-            // Only reset if we are still playing
             if (this.state.phase === 'PLAYING' || this.state.phase === 'INTRO') {
                 this.softReset();
             }
