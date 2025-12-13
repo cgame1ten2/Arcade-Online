@@ -64,7 +64,12 @@ function init() {
                 hostBtnRef.style.background = '#2ecc71';
                 hostBtnRef.style.borderColor = '#27ae60';
                 hostBtnRef.onclick = null; 
+                hostBtnRef.disabled = false;
                 
+                hostBtn.onclick = () => {
+                    audio.play('click');
+                    showConnectPopup(code);
+                };
                 showConnectPopup(code);
             };
         };
@@ -144,28 +149,17 @@ function init() {
 function showConnectPopup(code) {
     const baseUrl = window.location.href.split('?')[0].split('#')[0].replace(/\/$/, "");
     const joinUrl = `${baseUrl}/mobile.html?room=${code}`;
-    
     ui.showMessage(
         `Room Code: ${code}`, 
-        `Scan to Join:<br>
-         <div id="host-qr-target" style="display:flex; justify-content:center; margin:15px auto; background:white; padding:10px; width:fit-content; border-radius:8px; box-shadow:0 4px 10px rgba(0,0,0,0.1);"></div>
-         <p style="font-size:0.9em; opacity:0.7;">Or visit mobile.html</p>`, 
+        `Scan to Join:<br><div id="host-qr-target" style="display:flex; justify-content:center; margin:15px auto; background:white; padding:10px; width:fit-content; border-radius:8px; box-shadow:0 4px 10px rgba(0,0,0,0.1);"></div><p style="font-size:0.9em; opacity:0.7;">Or visit mobile.html</p>`, 
         "OK", 
         () => ui.hideMessage()
     );
-
     setTimeout(() => {
         const target = document.getElementById('host-qr-target');
         if(target && window.QRCode) {
             target.innerHTML = ''; 
-            new QRCode(target, {
-                text: joinUrl,
-                width: 150,
-                height: 150,
-                colorDark : "#2c3e50",
-                colorLight : "#ffffff",
-                correctLevel : QRCode.CorrectLevel.M
-            });
+            new QRCode(target, { text: joinUrl, width: 150, height: 150, colorDark : "#2c3e50", colorLight : "#ffffff", correctLevel : QRCode.CorrectLevel.M });
         }
     }, 100);
 }
@@ -185,33 +179,15 @@ function renderHub() {
     createTournamentBanner();
     GAME_LIST.forEach(game => createGameCard(game));
     audio.setTrack('lobby');
-    
     const gameNames = GAME_LIST.map(g => ({ id: g.id, title: g.title }));
     network.broadcastState('LOBBY', 'IDLE', { gameList: gameNames });
-
     setTimeout(() => resumeDemos(), 50);
 }
 
 function createTournamentBanner() {
     const banner = document.createElement('div');
     banner.id = 'tournament-banner';
-    banner.innerHTML = `
-        <div class="banner-content">
-            <svg width="60" height="60" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"></path>
-                <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"></path>
-                <path d="M4 22h16"></path>
-                <path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"></path>
-                <path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"></path>
-                <path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"></path>
-            </svg>
-            <div class="banner-text">
-                <h3>TOURNAMENT MODE</h3>
-                <p>Play a series of random games to crown a champion!</p>
-            </div>
-            <button class="banner-btn">START</button>
-        </div>
-    `;
+    banner.innerHTML = `<div class="banner-content"><svg width="60" height="60" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"></path><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"></path><path d="M4 22h16"></path><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"></path><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"></path><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"></path></svg><div class="banner-text"><h3>TOURNAMENT MODE</h3><p>Play a series of random games to crown a champion!</p></div><button class="banner-btn">START</button></div>`;
     banner.onclick = () => showTournamentSetup();
     hubGrid.appendChild(banner);
 }
@@ -238,12 +214,10 @@ function enterGameMode(gameConfig) {
     audio.setTrack('game');
     gameStage.classList.remove('hidden');
     pauseDemos();
-
     currentScreenType = 'CONTROLLER'; 
     if (gameConfig && gameConfig.id === 'avatar-match') {
         currentScreenType = 'TOUCHPAD'; 
     }
-    
     network.broadcastState(currentScreenType, 'PLAYING');
 }
 
@@ -260,18 +234,7 @@ function resumeDemos() { demoInstances.forEach(p5inst => p5inst.loop()); }
 function showTournamentSetup() {
     audio.play('click');
     network.broadcastState('LOBBY', 'IDLE'); 
-    ui.centerMessage.innerHTML = `
-        <div class="message-card">
-            <h1>Tournament Setup</h1>
-            <p>How many rounds?</p>
-            <div class="tourney-opts">
-                <button class="tourney-btn" onclick="window.startTourney(3)"><span>3</span>Rounds</button>
-                <button class="tourney-btn" onclick="window.startTourney(5)"><span>5</span>Rounds</button>
-                <button class="tourney-btn" onclick="window.startTourney(7)"><span>7</span>Rounds</button>
-            </div>
-            <button id="cancel-tourney" class="secondary-btn">Cancel</button>
-        </div>
-    `;
+    ui.centerMessage.innerHTML = `<div class="message-card"><h1>Tournament Setup</h1><p>How many rounds?</p><div class="tourney-opts"><button class="tourney-btn" onclick="window.startTourney(3)"><span>3</span>Rounds</button><button class="tourney-btn" onclick="window.startTourney(5)"><span>5</span>Rounds</button><button class="tourney-btn" onclick="window.startTourney(7)"><span>7</span>Rounds</button></div><button id="cancel-tourney" class="secondary-btn">Cancel</button></div>`;
     ui.centerMessage.classList.add('visible');
     window.startTourney = (rounds) => {
         ui.hideMessage();
@@ -295,7 +258,6 @@ function renderVisualLobby() {
     controls.insertBefore(settingsDiv, controls.firstChild);
     document.getElementById('toggle-music').onclick = (e) => { const newState = !audio.musicEnabled; audio.toggleMusic(newState); e.target.textContent = `Music: ${newState ? 'ON' : 'OFF'}`; e.target.classList.toggle('active', newState); audio.play('click'); if (newState) audio.setTrack('config'); };
     document.getElementById('toggle-sfx').onclick = (e) => { const newState = !audio.sfxEnabled; audio.toggleSfx(newState); e.target.textContent = `SFX: ${newState ? 'ON' : 'OFF'}`; e.target.classList.toggle('active', newState); audio.play('click'); };
-    
     playerConfigGrid.innerHTML = '';
     const activePlayers = players.getActivePlayers();
     activePlayers.forEach((p, index) => {
@@ -306,10 +268,7 @@ function renderVisualLobby() {
         const inputDisabled = p.type === 'mobile' ? 'disabled title="Edit on Phone"' : '';
         const badge = p.type === 'mobile' ? '<span style="background:#3498db; color:white; padding:2px 6px; border-radius:4px; font-size:0.7em;">MOBILE</span>' : '';
         const showRemove = activePlayers.length > 2;
-        
-        // --- FIX: Add data-id to inputs so we use Player ID instead of Array Index ---
-        card.innerHTML = `<div class="setup-preview" id="${previewId}"></div><div class="setup-inputs"><div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">${badge}</div><input type="text" value="${p.name}" class="name-input" data-id="${p.id}" ${inputDisabled}><input type="range" min="0" max="360" value="${getHueFromHex(p.color)}" class="hue-slider" data-id="${p.id}" ${inputDisabled}></div><div class="setup-opts"><button class="setup-btn var-btn" data-id="${p.id}" ${inputDisabled}>${p.variant === 'default' ? 'Boy' : 'Girl'}</button><button class="setup-btn acc-btn" data-id="${p.id}" ${inputDisabled}>${p.accessory}</button></div>${showRemove ? `<button class="del-btn" data-id="${p.id}">Remove</button>` : ''}${p.type === 'mobile' ? `<div style="text-align:center; font-size:0.8em; color:#999; margin-top:5px;">Connected</div>` : ''}`;
-        
+        card.innerHTML = `<div class="setup-preview" id="${previewId}"></div><div class="setup-inputs"><div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">${badge}</div><input type="text" value="${p.name}" class="name-input" data-idx="${index}" ${inputDisabled}><input type="range" min="0" max="360" value="${getHueFromHex(p.color)}" class="hue-slider" data-idx="${index}" ${inputDisabled}></div><div class="setup-opts"><button class="setup-btn var-btn" data-idx="${index}" ${inputDisabled}>${p.variant === 'default' ? 'Boy' : 'Girl'}</button><button class="setup-btn acc-btn" data-idx="${index}" ${inputDisabled}>${p.accessory}</button></div>${showRemove ? `<button class="del-btn" data-idx="${index}">Remove</button>` : ''}${p.type === 'mobile' ? `<div style="text-align:center; font-size:0.8em; color:#999; margin-top:5px;">Connected</div>` : ''}`;
         playerConfigGrid.appendChild(card);
         const sketch = (sketchP) => {
             const avatars = new AvatarSystem(sketchP);
@@ -319,9 +278,7 @@ function renderVisualLobby() {
                 sketchP.clear(); sketchP.push(); sketchP.translate(100, 100);
                 const t = sketchP.millis(); const breath = sketchP.sin(t * 0.003) * 0.03; sketchP.scale(1 + breath, 1 - breath);
                 if (t > nextBlink) { expression = sketchP.random(['idle', 'happy', 'stunned']); nextBlink = t + sketchP.random(2000, 5000); setTimeout(() => expression = 'idle', 1000); }
-                
-                // Fetch by ID to ensure we get the right player even if array shifted
-                const currP = players.getPlayerById(p.id);
+                const currP = players.getPlayer(index);
                 if (currP) avatars.draw({ x: 0, y: 0, size: 90, color: currP.color, variant: currP.variant, accessory: currP.accessory, expression: expression });
                 sketchP.pop();
             };
@@ -331,62 +288,67 @@ function renderVisualLobby() {
     bindLobbyInputs();
 }
 
+/**
+ * FIXED BINDINGS: Uses Player ID instead of Array Index
+ */
 function bindLobbyInputs() {
     const accessories = AvatarSystem.ACCESSORIES;
-    
-    // --- FIX: Use data-id and parseInt for proper ID lookup ---
-    
-    document.querySelectorAll('.name-input').forEach(el => { 
-        el.addEventListener('input', (e) => { 
-            if(e.target.disabled) return; 
-            const pid = parseInt(e.target.dataset.id);
-            players.updatePlayer(pid, { name: e.target.value }); 
-        }); 
+
+    // Helper: Get Player by Index, then update by ID
+    const getP = (e) => players.getPlayer(e.target.dataset.idx);
+
+    document.querySelectorAll('.name-input').forEach(el => {
+        el.addEventListener('input', (e) => {
+            if(e.target.disabled) return;
+            const p = getP(e);
+            if(p) players.updatePlayer(p.id, { name: e.target.value });
+        });
     });
-    
-    document.querySelectorAll('.hue-slider').forEach(el => { 
-        el.addEventListener('input', (e) => { 
-            if(e.target.disabled) return; 
-            const pid = parseInt(e.target.dataset.id);
-            const hue = e.target.value; 
-            const color = hslToHex(hue, 85, 60); 
-            players.updatePlayer(pid, { color: color }); 
-        }); 
+
+    document.querySelectorAll('.hue-slider').forEach(el => {
+        el.addEventListener('input', (e) => {
+            if(e.target.disabled) return;
+            const hue = e.target.value;
+            const color = hslToHex(hue, 85, 60);
+            const p = getP(e);
+            if(p) players.updatePlayer(p.id, { color: color });
+        });
     });
-    
-    document.querySelectorAll('.var-btn').forEach(el => { 
-        el.addEventListener('click', (e) => { 
-            if(e.target.disabled) return; 
-            const pid = parseInt(e.target.dataset.id);
-            const p = players.getPlayerById(pid); 
-            const newVar = p.variant === 'default' ? 'feminine' : 'default'; 
-            players.updatePlayer(pid, { variant: newVar }); 
-            e.target.textContent = newVar === 'default' ? 'Boy' : 'Girl'; 
-            audio.play('click'); 
-        }); 
+
+    document.querySelectorAll('.var-btn').forEach(el => {
+        el.addEventListener('click', (e) => {
+            if(e.target.disabled) return;
+            const p = getP(e);
+            if(p) {
+                const newVar = p.variant === 'default' ? 'feminine' : 'default';
+                players.updatePlayer(p.id, { variant: newVar });
+                e.target.textContent = newVar === 'default' ? 'Boy' : 'Girl';
+                audio.play('click');
+            }
+        });
     });
-    
-    document.querySelectorAll('.acc-btn').forEach(el => { 
-        el.addEventListener('click', (e) => { 
-            if(e.target.disabled) return; 
-            const pid = parseInt(e.target.dataset.id);
-            const p = players.getPlayerById(pid); 
-            let currIdx = accessories.indexOf(p.accessory); 
-            if (currIdx === -1) currIdx = 0; 
-            let nextAcc = accessories[(currIdx + 1) % accessories.length]; 
-            players.updatePlayer(pid, { accessory: nextAcc }); 
-            e.target.textContent = nextAcc; 
-            audio.play('click'); 
-        }); 
+
+    document.querySelectorAll('.acc-btn').forEach(el => {
+        el.addEventListener('click', (e) => {
+            if(e.target.disabled) return;
+            const p = getP(e);
+            if(p) {
+                let currIdx = accessories.indexOf(p.accessory);
+                if (currIdx === -1) currIdx = 0;
+                let nextAcc = accessories[(currIdx + 1) % accessories.length];
+                players.updatePlayer(p.id, { accessory: nextAcc });
+                e.target.textContent = nextAcc;
+                audio.play('click');
+            }
+        });
     });
-    
-    document.querySelectorAll('.del-btn').forEach(el => { 
-        el.addEventListener('click', (e) => { 
-            audio.play('click'); 
-            const pid = parseInt(e.target.dataset.id);
-            players.removePlayerById(pid); 
-            renderVisualLobby(); 
-        }); 
+
+    document.querySelectorAll('.del-btn').forEach(el => {
+        el.addEventListener('click', (e) => {
+            audio.play('click');
+            players.removePlayer(e.target.dataset.idx); // removePlayer handles indices correctly
+            renderVisualLobby();
+        });
     });
 }
 
