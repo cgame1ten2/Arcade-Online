@@ -18,7 +18,6 @@ let currentMode = 'hub';
 let lobbyInstances = [];
 let demoInstances = []; 
 
-// DOM Elements
 const hubGrid = document.getElementById('hub-grid');
 const gameStage = document.getElementById('game-stage');
 const backBtn = document.getElementById('back-to-hub-btn');
@@ -150,7 +149,7 @@ function setupLobby() {
         audio.setTrack('config'); 
         renderVisualLobby();
         setupOverlay.classList.remove('hidden');
-        pauseDemos();
+        pauseDemos(); 
     });
 
     savePlayersBtn.addEventListener('click', () => {
@@ -213,11 +212,16 @@ function renderVisualLobby() {
         card.className = 'player-setup-card';
         const previewId = `preview-${index}`;
 
+        // Using 'change' instead of 'input' prevents flickering but feels less responsive.
+        // We will use 'input' but ensure we don't re-render the DOM.
+        
         card.innerHTML = `
             <div class="setup-preview" id="${previewId}"></div>
             <div class="setup-inputs">
                 <input type="text" value="${p.name}" class="name-input" data-idx="${index}">
-                <input type="range" min="0" max="360" value="${getHueFromHex(p.color)}" class="hue-slider" data-idx="${index}">
+                <div class="hue-wrapper">
+                    <input type="range" min="0" max="360" value="${getHueFromHex(p.color)}" class="hue-slider" data-idx="${index}">
+                </div>
             </div>
             <div class="setup-opts">
                 <button class="setup-btn var-btn" data-idx="${index}">${p.variant === 'default' ? 'Boy' : 'Girl'}</button>
@@ -228,6 +232,7 @@ function renderVisualLobby() {
 
         playerConfigGrid.appendChild(card);
 
+        // --- LIVE PREVIEW SKETCH ---
         const sketch = (sketchP) => {
             const avatars = new AvatarSystem(sketchP);
             let expression = 'idle';
@@ -251,12 +256,13 @@ function renderVisualLobby() {
                     setTimeout(() => expression = 'idle', 1000);
                 }
 
-                // FIX: Get FRESH player data directly from manager every frame
-                const freshP = players.getPlayer(index); 
-                if (freshP) {
+                // FETCH LATEST DATA DIRECTLY FROM MANAGER
+                // This ensures the preview is always up to date without re-rendering the DOM
+                const currP = players.getPlayer(index);
+                if (currP) {
                     avatars.draw({
                         x: 0, y: 0, size: 90,
-                        color: freshP.color, variant: freshP.variant, accessory: freshP.accessory, expression: expression
+                        color: currP.color, variant: currP.variant, accessory: currP.accessory, expression: expression
                     });
                 }
                 sketchP.pop();
@@ -272,28 +278,28 @@ function bindLobbyInputs() {
     const accessories = AvatarSystem.ACCESSORIES;
 
     // NAME INPUT
-    const nameInputs = document.querySelectorAll('.name-input');
-    nameInputs.forEach(el => {
+    document.querySelectorAll('.name-input').forEach(el => {
         el.addEventListener('input', (e) => {
             const idx = parseInt(e.target.dataset.idx);
+            // Update data model, BUT DO NOT CALL RENDER
             players.updatePlayer(idx, { name: e.target.value });
         });
     });
 
-    // COLOR SLIDER
-    const hueSliders = document.querySelectorAll('.hue-slider');
-    hueSliders.forEach(el => {
+    // COLOR INPUT
+    document.querySelectorAll('.hue-slider').forEach(el => {
         el.addEventListener('input', (e) => {
             const idx = parseInt(e.target.dataset.idx);
             const hue = e.target.value;
             const color = hslToHex(hue, 85, 60);
+            // Update data model
             players.updatePlayer(idx, { color: color });
+            // The canvas loop reads players.getPlayer(idx) every frame, so it updates automatically!
         });
     });
 
     // VARIANT BUTTON
-    const varBtns = document.querySelectorAll('.var-btn');
-    varBtns.forEach(el => {
+    document.querySelectorAll('.var-btn').forEach(el => {
         el.addEventListener('click', (e) => {
             const idx = parseInt(e.target.dataset.idx);
             const p = players.getPlayer(idx);
@@ -305,8 +311,7 @@ function bindLobbyInputs() {
     });
 
     // ACCESSORY BUTTON
-    const accBtns = document.querySelectorAll('.acc-btn');
-    accBtns.forEach(el => {
+    document.querySelectorAll('.acc-btn').forEach(el => {
         el.addEventListener('click', (e) => {
             const idx = parseInt(e.target.dataset.idx);
             const p = players.getPlayer(idx);
@@ -320,13 +325,11 @@ function bindLobbyInputs() {
     });
 
     // REMOVE BUTTON
-    const delBtns = document.querySelectorAll('.del-btn');
-    delBtns.forEach(el => {
+    document.querySelectorAll('.del-btn').forEach(el => {
         el.addEventListener('click', (e) => {
-            const idx = parseInt(e.target.dataset.idx);
             audio.play('click');
-            players.removePlayer(idx);
-            renderVisualLobby(); // Re-render grid
+            players.removePlayer(e.target.dataset.idx);
+            renderVisualLobby(); // Only re-render DOM on remove/add
         });
     });
 }
