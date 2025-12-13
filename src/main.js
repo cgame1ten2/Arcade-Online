@@ -47,36 +47,24 @@ function init() {
     };
     document.addEventListener('click', startAudio);
 
-    // --- HOST BUTTON LOGIC ---
     if (!document.getElementById('host-game-btn')) {
         const hostBtn = document.createElement('button');
         hostBtn.id = 'host-game-btn';
         hostBtn.className = 'icon-btn';
         hostBtn.innerText = '📡 Host Game';
         hostBtn.style.marginRight = '10px';
-        
         hostBtn.onclick = () => {
-            // 1. Initial Click: Start Hosting
             audio.play('click');
             hostBtn.innerText = 'Starting...';
-            hostBtn.disabled = true; // Temporary disable while connecting
-            
+            hostBtn.disabled = true;
             network.hostGame();
             
             network.onHostReady = (code) => {
-                // 2. Host Ready: Update Button to be a "Recall" button
-                updateHostButton(code);
-                hostBtn.style.background = '#2ecc71';
-                hostBtn.style.borderColor = '#27ae60';
-                hostBtn.disabled = false; // Re-enable
+                hostBtnRef.innerText = `Room: ${code}`;
+                hostBtnRef.style.background = '#2ecc71';
+                hostBtnRef.style.borderColor = '#27ae60';
+                hostBtnRef.onclick = null; 
                 
-                // Change click behavior to show popup again
-                hostBtn.onclick = () => {
-                    audio.play('click');
-                    showConnectPopup(code);
-                };
-                
-                // Show immediately
                 showConnectPopup(code);
             };
         };
@@ -153,15 +141,10 @@ function init() {
     attachGlobalSoundListeners();
 }
 
-/**
- * REUSABLE POPUP FOR QR CODE
- */
 function showConnectPopup(code) {
-    // 1. Calculate URL
     const baseUrl = window.location.href.split('?')[0].split('#')[0].replace(/\/$/, "");
     const joinUrl = `${baseUrl}/mobile.html?room=${code}`;
     
-    // 2. Show Message with placeholder DIV
     ui.showMessage(
         `Room Code: ${code}`, 
         `Scan to Join:<br>
@@ -171,7 +154,6 @@ function showConnectPopup(code) {
         () => ui.hideMessage()
     );
 
-    // 3. Render QR Code
     setTimeout(() => {
         const target = document.getElementById('host-qr-target');
         if(target && window.QRCode) {
@@ -300,12 +282,6 @@ function showTournamentSetup() {
     document.getElementById('cancel-tourney').onclick = () => { audio.play('click'); ui.hideMessage(); };
 }
 
-function setupLobby() {
-    setupBtn.onclick = () => { audio.play('click'); audio.setTrack('config'); network.broadcastState('LOBBY', 'IDLE'); renderVisualLobby(); setupOverlay.classList.remove('hidden'); pauseDemos(); };
-    savePlayersBtn.onclick = () => { audio.play('click'); audio.setTrack('lobby'); setupOverlay.classList.add('hidden'); cleanupLobby(); renderHub(); };
-    addPlayerBtn.onclick = () => { audio.play('click'); players.addPlayer('local'); renderVisualLobby(); };
-}
-
 function cleanupLobby() { lobbyInstances.forEach(p => p.remove()); lobbyInstances = []; }
 
 function renderVisualLobby() {
@@ -319,6 +295,7 @@ function renderVisualLobby() {
     controls.insertBefore(settingsDiv, controls.firstChild);
     document.getElementById('toggle-music').onclick = (e) => { const newState = !audio.musicEnabled; audio.toggleMusic(newState); e.target.textContent = `Music: ${newState ? 'ON' : 'OFF'}`; e.target.classList.toggle('active', newState); audio.play('click'); if (newState) audio.setTrack('config'); };
     document.getElementById('toggle-sfx').onclick = (e) => { const newState = !audio.sfxEnabled; audio.toggleSfx(newState); e.target.textContent = `SFX: ${newState ? 'ON' : 'OFF'}`; e.target.classList.toggle('active', newState); audio.play('click'); };
+    
     playerConfigGrid.innerHTML = '';
     const activePlayers = players.getActivePlayers();
     activePlayers.forEach((p, index) => {
@@ -329,7 +306,10 @@ function renderVisualLobby() {
         const inputDisabled = p.type === 'mobile' ? 'disabled title="Edit on Phone"' : '';
         const badge = p.type === 'mobile' ? '<span style="background:#3498db; color:white; padding:2px 6px; border-radius:4px; font-size:0.7em;">MOBILE</span>' : '';
         const showRemove = activePlayers.length > 2;
-        card.innerHTML = `<div class="setup-preview" id="${previewId}"></div><div class="setup-inputs"><div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">${badge}</div><input type="text" value="${p.name}" class="name-input" data-idx="${index}" ${inputDisabled}><input type="range" min="0" max="360" value="${getHueFromHex(p.color)}" class="hue-slider" data-idx="${index}" ${inputDisabled}></div><div class="setup-opts"><button class="setup-btn var-btn" data-idx="${index}" ${inputDisabled}>${p.variant === 'default' ? 'Boy' : 'Girl'}</button><button class="setup-btn acc-btn" data-idx="${index}" ${inputDisabled}>${p.accessory}</button></div>${showRemove ? `<button class="del-btn" data-idx="${index}">Remove</button>` : ''}${p.type === 'mobile' ? `<div style="text-align:center; font-size:0.8em; color:#999; margin-top:5px;">Connected</div>` : ''}`;
+        
+        // --- FIX: Add data-id to inputs so we use Player ID instead of Array Index ---
+        card.innerHTML = `<div class="setup-preview" id="${previewId}"></div><div class="setup-inputs"><div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">${badge}</div><input type="text" value="${p.name}" class="name-input" data-id="${p.id}" ${inputDisabled}><input type="range" min="0" max="360" value="${getHueFromHex(p.color)}" class="hue-slider" data-id="${p.id}" ${inputDisabled}></div><div class="setup-opts"><button class="setup-btn var-btn" data-id="${p.id}" ${inputDisabled}>${p.variant === 'default' ? 'Boy' : 'Girl'}</button><button class="setup-btn acc-btn" data-id="${p.id}" ${inputDisabled}>${p.accessory}</button></div>${showRemove ? `<button class="del-btn" data-id="${p.id}">Remove</button>` : ''}${p.type === 'mobile' ? `<div style="text-align:center; font-size:0.8em; color:#999; margin-top:5px;">Connected</div>` : ''}`;
+        
         playerConfigGrid.appendChild(card);
         const sketch = (sketchP) => {
             const avatars = new AvatarSystem(sketchP);
@@ -339,7 +319,9 @@ function renderVisualLobby() {
                 sketchP.clear(); sketchP.push(); sketchP.translate(100, 100);
                 const t = sketchP.millis(); const breath = sketchP.sin(t * 0.003) * 0.03; sketchP.scale(1 + breath, 1 - breath);
                 if (t > nextBlink) { expression = sketchP.random(['idle', 'happy', 'stunned']); nextBlink = t + sketchP.random(2000, 5000); setTimeout(() => expression = 'idle', 1000); }
-                const currP = players.getPlayer(index);
+                
+                // Fetch by ID to ensure we get the right player even if array shifted
+                const currP = players.getPlayerById(p.id);
                 if (currP) avatars.draw({ x: 0, y: 0, size: 90, color: currP.color, variant: currP.variant, accessory: currP.accessory, expression: expression });
                 sketchP.pop();
             };
@@ -351,11 +333,61 @@ function renderVisualLobby() {
 
 function bindLobbyInputs() {
     const accessories = AvatarSystem.ACCESSORIES;
-    document.querySelectorAll('.name-input').forEach(el => { el.addEventListener('input', (e) => { if(e.target.disabled) return; players.updatePlayer(e.target.dataset.idx, { name: e.target.value }); }); });
-    document.querySelectorAll('.hue-slider').forEach(el => { el.addEventListener('input', (e) => { if(e.target.disabled) return; const hue = e.target.value; const color = hslToHex(hue, 85, 60); players.updatePlayer(e.target.dataset.idx, { color: color }); }); });
-    document.querySelectorAll('.var-btn').forEach(el => { el.addEventListener('click', (e) => { if(e.target.disabled) return; const idx = e.target.dataset.idx; const p = players.getPlayer(idx); const newVar = p.variant === 'default' ? 'feminine' : 'default'; players.updatePlayer(p.id, { variant: newVar }); e.target.textContent = newVar === 'default' ? 'Boy' : 'Girl'; audio.play('click'); }); });
-    document.querySelectorAll('.acc-btn').forEach(el => { el.addEventListener('click', (e) => { if(e.target.disabled) return; const idx = e.target.dataset.idx; const p = players.getPlayer(idx); let currIdx = accessories.indexOf(p.accessory); if (currIdx === -1) currIdx = 0; let nextAcc = accessories[(currIdx + 1) % accessories.length]; players.updatePlayer(p.id, { accessory: nextAcc }); e.target.textContent = nextAcc; audio.play('click'); }); });
-    document.querySelectorAll('.del-btn').forEach(el => { el.addEventListener('click', (e) => { audio.play('click'); players.removePlayer(e.target.dataset.idx); renderVisualLobby(); }); });
+    
+    // --- FIX: Use data-id and parseInt for proper ID lookup ---
+    
+    document.querySelectorAll('.name-input').forEach(el => { 
+        el.addEventListener('input', (e) => { 
+            if(e.target.disabled) return; 
+            const pid = parseInt(e.target.dataset.id);
+            players.updatePlayer(pid, { name: e.target.value }); 
+        }); 
+    });
+    
+    document.querySelectorAll('.hue-slider').forEach(el => { 
+        el.addEventListener('input', (e) => { 
+            if(e.target.disabled) return; 
+            const pid = parseInt(e.target.dataset.id);
+            const hue = e.target.value; 
+            const color = hslToHex(hue, 85, 60); 
+            players.updatePlayer(pid, { color: color }); 
+        }); 
+    });
+    
+    document.querySelectorAll('.var-btn').forEach(el => { 
+        el.addEventListener('click', (e) => { 
+            if(e.target.disabled) return; 
+            const pid = parseInt(e.target.dataset.id);
+            const p = players.getPlayerById(pid); 
+            const newVar = p.variant === 'default' ? 'feminine' : 'default'; 
+            players.updatePlayer(pid, { variant: newVar }); 
+            e.target.textContent = newVar === 'default' ? 'Boy' : 'Girl'; 
+            audio.play('click'); 
+        }); 
+    });
+    
+    document.querySelectorAll('.acc-btn').forEach(el => { 
+        el.addEventListener('click', (e) => { 
+            if(e.target.disabled) return; 
+            const pid = parseInt(e.target.dataset.id);
+            const p = players.getPlayerById(pid); 
+            let currIdx = accessories.indexOf(p.accessory); 
+            if (currIdx === -1) currIdx = 0; 
+            let nextAcc = accessories[(currIdx + 1) % accessories.length]; 
+            players.updatePlayer(pid, { accessory: nextAcc }); 
+            e.target.textContent = nextAcc; 
+            audio.play('click'); 
+        }); 
+    });
+    
+    document.querySelectorAll('.del-btn').forEach(el => { 
+        el.addEventListener('click', (e) => { 
+            audio.play('click'); 
+            const pid = parseInt(e.target.dataset.id);
+            players.removePlayerById(pid); 
+            renderVisualLobby(); 
+        }); 
+    });
 }
 
 function hslToHex(h, s, l) {
