@@ -1,5 +1,3 @@
-/* src/main.js */
-
 import PlayerManager from './core/PlayerManager.js';
 import InputManager from './core/InputManager.js';
 import UIManager from './core/UIManager.js';
@@ -7,7 +5,6 @@ import GameRunner from './core/GameRunner.js';
 import AudioManager from './core/AudioManager.js';
 import AvatarSystem from './core/AvatarSystem.js';
 import TournamentManager from './core/TournamentManager.js';
-import NetworkManager from './core/NetworkManager.js';
 import { GAME_LIST } from './GameRegistry.js';
 
 const players = new PlayerManager();
@@ -16,16 +13,12 @@ const ui = new UIManager();
 const audio = new AudioManager();
 const runner = new GameRunner(players, inputs, ui, audio);
 const tournament = new TournamentManager(runner, ui, players);
-const network = new NetworkManager(players, inputs);
-
-inputs.setNetworkManager(network);
 
 let currentMode = 'hub';
-let currentGameState = 'IDLE'; 
-let currentScreenType = 'CONTROLLER';
-let lobbyInstances = []; 
-let demoInstances = [];
+let lobbyInstances = [];
+let demoInstances = []; 
 
+// DOM Elements
 const hubGrid = document.getElementById('hub-grid');
 const gameStage = document.getElementById('game-stage');
 const backBtn = document.getElementById('back-to-hub-btn');
@@ -34,8 +27,6 @@ const setupOverlay = document.getElementById('setup-overlay');
 const savePlayersBtn = document.getElementById('save-players-btn');
 const addPlayerBtn = document.getElementById('add-player-btn');
 const playerConfigGrid = document.getElementById('player-config-grid');
-const mainHeader = document.getElementById('main-header');
-let hostBtnRef = null;
 
 function init() {
     console.log("🚀 Wonder Arcade Engine Started");
@@ -47,167 +38,11 @@ function init() {
     };
     document.addEventListener('click', startAudio);
 
-    // --- HOST BUTTON LOGIC ---
-    if (!document.getElementById('host-game-btn')) {
-        const hostBtn = document.createElement('button');
-        hostBtn.id = 'host-game-btn';
-        hostBtn.className = 'icon-btn';
-        hostBtn.innerText = '📡 Host Game';
-        hostBtn.style.marginRight = '10px';
-        
-        hostBtn.onclick = () => {
-            // 1. Initial Click: Start Hosting
-            audio.play('click');
-            hostBtn.innerText = 'Starting...';
-            hostBtn.disabled = true; // Temporary disable while connecting
-            
-            network.hostGame();
-            
-            network.onHostReady = (code) => {
-                // 2. Host Ready: Update Button to be a "Recall" button
-                updateHostButton(code);
-                hostBtn.style.background = '#2ecc71';
-                hostBtn.style.borderColor = '#27ae60';
-                hostBtn.disabled = false; // Re-enable
-                
-                // Change click behavior to show popup again
-                hostBtn.onclick = () => {
-                    audio.play('click');
-                    showConnectPopup(code);
-                };
-                
-                // Show immediately
-                showConnectPopup(code);
-            };
-        };
-        mainHeader.insertBefore(hostBtn, setupBtn);
-        hostBtnRef = hostBtn;
-    }
-
-    setupBtn.onclick = () => {
-        audio.play('click');
-        audio.setTrack('config'); 
-        network.broadcastState('LOBBY', 'IDLE');
-        renderVisualLobby();
-        setupOverlay.classList.remove('hidden');
-        pauseDemos();
-    };
-
-    savePlayersBtn.onclick = () => {
-        audio.play('click');
-        audio.setTrack('lobby');
-        setupOverlay.classList.add('hidden');
-        cleanupLobby(); 
-        renderHub();    
-    };
-
-    addPlayerBtn.onclick = () => {
-        audio.play('click');
-        players.addPlayer('local');
-        renderVisualLobby();
-    };
-
-    backBtn.onclick = returnToHub;
-
-    document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape' && currentMode === 'game') returnToHub();
-    });
-
-    window.addEventListener('player-update', () => {
-        if(network.roomId && hostBtnRef) updateHostButton(network.roomId);
-        if (!setupOverlay.classList.contains('hidden')) renderVisualLobby();
-    });
-
-    window.addEventListener('remote-command', (e) => {
-        const cmd = e.detail; 
-        if (cmd.action === 'EXIT') returnToHub();
-        else if (cmd.action === 'NEXT_ROUND') {
-            if (currentMode === 'game' && runner.activeGame) {
-                ui.hideMessage(); 
-                runner.activeGame.startNewRound();
-            }
-        }
-        else if (cmd.action === 'PLAY_AGAIN') {
-            if (currentMode === 'game' && runner.activeGame) {
-                ui.hideMessage(); 
-                runner.activeGame.setup(); 
-            }
-        }
-        else if (cmd.action === 'SELECT_GAME') {
-            const gameId = cmd.payload;
-            const gameConfig = GAME_LIST.find(g => g.id === gameId);
-            if (gameConfig && currentMode === 'hub') {
-                audio.play('click');
-                enterGameMode(gameConfig);
-                runner.mount(gameConfig.class, 'game-canvas-container', 'active');
-            }
-        }
-    });
-
-    window.addEventListener('game-state-change', (e) => {
-        currentGameState = e.detail; 
-        network.broadcastState(currentScreenType, currentGameState);
-    });
-
-    renderHub(); 
-    attachGlobalSoundListeners();
-}
-
-/**
- * REUSABLE POPUP FOR QR CODE
- */
-function showConnectPopup(code) {
-    // 1. Calculate URL
-    const baseUrl = window.location.href.split('?')[0].split('#')[0].replace(/\/$/, "");
-    const joinUrl = `${baseUrl}/mobile.html?room=${code}`;
-    
-    // 2. Show Message with placeholder DIV
-    ui.showMessage(
-        `Room Code: ${code}`, 
-        `Scan to Join:<br>
-         <div id="host-qr-target" style="display:flex; justify-content:center; margin:15px auto; background:white; padding:10px; width:fit-content; border-radius:8px; box-shadow:0 4px 10px rgba(0,0,0,0.1);"></div>
-         <p style="font-size:0.9em; opacity:0.7;">Or visit mobile.html</p>`, 
-        "OK", 
-        () => ui.hideMessage()
-    );
-
-    // 3. Render QR Code
-    setTimeout(() => {
-        const target = document.getElementById('host-qr-target');
-        if(target && window.QRCode) {
-            target.innerHTML = ''; 
-            new QRCode(target, {
-                text: joinUrl,
-                width: 150,
-                height: 150,
-                colorDark : "#2c3e50",
-                colorLight : "#ffffff",
-                correctLevel : QRCode.CorrectLevel.M
-            });
-        }
-    }, 100);
-}
-
-function updateHostButton(code) {
-    if(!hostBtnRef) return;
-    const count = players.getActivePlayers().filter(p => p.type === 'mobile').length;
-    hostBtnRef.innerText = `Room: ${code} (${count})`;
-}
-
-function renderHub() {
-    currentMode = 'hub';
-    currentGameState = 'IDLE';
-    demoInstances.forEach(inst => inst.remove());
-    demoInstances = [];
-    hubGrid.innerHTML = '';
     createTournamentBanner();
     GAME_LIST.forEach(game => createGameCard(game));
-    audio.setTrack('lobby');
-    
-    const gameNames = GAME_LIST.map(g => ({ id: g.id, title: g.title }));
-    network.broadcastState('LOBBY', 'IDLE', { gameList: gameNames });
-
-    setTimeout(() => resumeDemos(), 50);
+    setupListeners();
+    setupLobby();
+    attachGlobalSoundListeners();
 }
 
 function createTournamentBanner() {
@@ -234,50 +69,17 @@ function createTournamentBanner() {
     hubGrid.appendChild(banner);
 }
 
-function createGameCard(gameConfig) {
-    const card = document.createElement('div');
-    card.className = 'game-card';
-    const canvasId = 'card-' + gameConfig.id;
-    card.innerHTML = `<div class="card-canvas-wrapper" id="${canvasId}"></div><div class="card-info"><h3>${gameConfig.title}</h3><p>${gameConfig.description}</p></div>`;
-    card.addEventListener('click', () => {
-        audio.play('click');
-        enterGameMode(gameConfig);
-        runner.mount(gameConfig.class, 'game-canvas-container', 'active');
-    });
-    hubGrid.appendChild(card);
-    const p5inst = runner.mount(gameConfig.class, canvasId, 'demo');
-    p5inst.loop();
-    demoInstances.push(p5inst);
+function pauseDemos() {
+    demoInstances.forEach(p5inst => p5inst.noLoop());
 }
 
-function enterGameMode(gameConfig) {
-    currentMode = 'game';
-    currentGameState = 'PLAYING';
-    audio.setTrack('game');
-    gameStage.classList.remove('hidden');
-    pauseDemos();
-
-    currentScreenType = 'CONTROLLER'; 
-    if (gameConfig && gameConfig.id === 'avatar-match') {
-        currentScreenType = 'TOUCHPAD'; 
-    }
-    
-    network.broadcastState(currentScreenType, 'PLAYING');
+function resumeDemos() {
+    demoInstances.forEach(p5inst => p5inst.loop());
 }
-
-function returnToHub() {
-    audio.play('click');
-    gameStage.classList.add('hidden');
-    runner.mount(null, 'game-canvas-container', 'active');
-    renderHub();
-}
-
-function pauseDemos() { demoInstances.forEach(p5inst => p5inst.noLoop()); }
-function resumeDemos() { demoInstances.forEach(p5inst => p5inst.loop()); }
 
 function showTournamentSetup() {
     audio.play('click');
-    network.broadcastState('LOBBY', 'IDLE'); 
+
     ui.centerMessage.innerHTML = `
         <div class="message-card">
             <h1>Tournament Setup</h1>
@@ -291,87 +93,293 @@ function showTournamentSetup() {
         </div>
     `;
     ui.centerMessage.classList.add('visible');
+
     window.startTourney = (rounds) => {
         ui.hideMessage();
         audio.play('click');
-        enterGameMode(null); 
+        enterGameMode();
         tournament.startTournament(rounds);
     };
-    document.getElementById('cancel-tourney').onclick = () => { audio.play('click'); ui.hideMessage(); };
+
+    document.getElementById('cancel-tourney').onclick = () => {
+        audio.play('click');
+        ui.hideMessage();
+    };
+}
+
+function createGameCard(gameConfig) {
+    const card = document.createElement('div');
+    card.className = 'game-card';
+    const canvasId = 'card-' + gameConfig.id;
+
+    card.innerHTML = `
+        <div class="card-canvas-wrapper" id="${canvasId}"></div>
+        <div class="card-info">
+            <h3>${gameConfig.title}</h3>
+            <p>${gameConfig.description}</p>
+        </div>
+    `;
+
+    card.addEventListener('click', () => {
+        audio.play('click');
+        enterGameMode();
+        runner.mount(gameConfig.class, 'game-canvas-container', 'active');
+    });
+
+    hubGrid.appendChild(card);
+    
+    const p5inst = runner.mount(gameConfig.class, canvasId, 'demo');
+    demoInstances.push(p5inst);
+}
+
+function enterGameMode() {
+    currentMode = 'game';
+    audio.setTrack('game');
+    gameStage.classList.remove('hidden');
+    pauseDemos();
+}
+
+function returnToHub() {
+    audio.play('click');
+    location.reload();
 }
 
 function setupLobby() {
-    setupBtn.onclick = () => { audio.play('click'); audio.setTrack('config'); network.broadcastState('LOBBY', 'IDLE'); renderVisualLobby(); setupOverlay.classList.remove('hidden'); pauseDemos(); };
-    savePlayersBtn.onclick = () => { audio.play('click'); audio.setTrack('lobby'); setupOverlay.classList.add('hidden'); cleanupLobby(); renderHub(); };
-    addPlayerBtn.onclick = () => { audio.play('click'); players.addPlayer('local'); renderVisualLobby(); };
+    setupBtn.addEventListener('click', () => {
+        audio.play('click');
+        audio.setTrack('config'); 
+        renderVisualLobby();
+        setupOverlay.classList.remove('hidden');
+        pauseDemos();
+    });
+
+    savePlayersBtn.addEventListener('click', () => {
+        audio.play('click');
+        audio.setTrack('lobby');
+        setupOverlay.classList.add('hidden');
+        cleanupLobby();
+        location.reload(); 
+    });
+
+    addPlayerBtn.addEventListener('click', () => {
+        audio.play('click');
+        players.addPlayer();
+        renderVisualLobby();
+    });
 }
 
-function cleanupLobby() { lobbyInstances.forEach(p => p.remove()); lobbyInstances = []; }
+function cleanupLobby() {
+    lobbyInstances.forEach(p => p.remove());
+    lobbyInstances = [];
+}
 
 function renderVisualLobby() {
     cleanupLobby();
+
     const controls = document.querySelector('.lobby-controls');
     const existingSettings = document.querySelector('.lobby-settings');
     if (existingSettings) existingSettings.remove();
+
     const settingsDiv = document.createElement('div');
     settingsDiv.className = 'lobby-settings';
-    settingsDiv.innerHTML = `<button id="toggle-music" class="setting-toggle ${audio.musicEnabled ? 'active' : ''}">Music: ${audio.musicEnabled ? 'ON' : 'OFF'}</button><button id="toggle-sfx" class="setting-toggle ${audio.sfxEnabled ? 'active' : ''}">SFX: ${audio.sfxEnabled ? 'ON' : 'OFF'}</button>`;
+    settingsDiv.innerHTML = `
+        <button id="toggle-music" class="setting-toggle ${audio.musicEnabled ? 'active' : ''}">Music: ${audio.musicEnabled ? 'ON' : 'OFF'}</button>
+        <button id="toggle-sfx" class="setting-toggle ${audio.sfxEnabled ? 'active' : ''}">SFX: ${audio.sfxEnabled ? 'ON' : 'OFF'}</button>
+    `;
     controls.insertBefore(settingsDiv, controls.firstChild);
-    document.getElementById('toggle-music').onclick = (e) => { const newState = !audio.musicEnabled; audio.toggleMusic(newState); e.target.textContent = `Music: ${newState ? 'ON' : 'OFF'}`; e.target.classList.toggle('active', newState); audio.play('click'); if (newState) audio.setTrack('config'); };
-    document.getElementById('toggle-sfx').onclick = (e) => { const newState = !audio.sfxEnabled; audio.toggleSfx(newState); e.target.textContent = `SFX: ${newState ? 'ON' : 'OFF'}`; e.target.classList.toggle('active', newState); audio.play('click'); };
+
+    document.getElementById('toggle-music').onclick = (e) => {
+        const newState = !audio.musicEnabled;
+        audio.toggleMusic(newState);
+        e.target.textContent = `Music: ${newState ? 'ON' : 'OFF'}`;
+        e.target.classList.toggle('active', newState);
+        audio.play('click');
+        if (newState) audio.setTrack('config');
+    };
+
+    document.getElementById('toggle-sfx').onclick = (e) => {
+        const newState = !audio.sfxEnabled;
+        audio.toggleSfx(newState);
+        e.target.textContent = `SFX: ${newState ? 'ON' : 'OFF'}`;
+        e.target.classList.toggle('active', newState);
+        audio.play('click');
+    };
+
     playerConfigGrid.innerHTML = '';
     const activePlayers = players.getActivePlayers();
+
     activePlayers.forEach((p, index) => {
         const card = document.createElement('div');
         card.className = 'player-setup-card';
-        if(p.type === 'mobile') card.style.border = "3px solid #3498db";
         const previewId = `preview-${index}`;
-        const inputDisabled = p.type === 'mobile' ? 'disabled title="Edit on Phone"' : '';
-        const badge = p.type === 'mobile' ? '<span style="background:#3498db; color:white; padding:2px 6px; border-radius:4px; font-size:0.7em;">MOBILE</span>' : '';
-        const showRemove = activePlayers.length > 2;
-        card.innerHTML = `<div class="setup-preview" id="${previewId}"></div><div class="setup-inputs"><div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">${badge}</div><input type="text" value="${p.name}" class="name-input" data-idx="${index}" ${inputDisabled}><input type="range" min="0" max="360" value="${getHueFromHex(p.color)}" class="hue-slider" data-idx="${index}" ${inputDisabled}></div><div class="setup-opts"><button class="setup-btn var-btn" data-idx="${index}" ${inputDisabled}>${p.variant === 'default' ? 'Boy' : 'Girl'}</button><button class="setup-btn acc-btn" data-idx="${index}" ${inputDisabled}>${p.accessory}</button></div>${showRemove ? `<button class="del-btn" data-idx="${index}">Remove</button>` : ''}${p.type === 'mobile' ? `<div style="text-align:center; font-size:0.8em; color:#999; margin-top:5px;">Connected</div>` : ''}`;
+
+        card.innerHTML = `
+            <div class="setup-preview" id="${previewId}"></div>
+            <div class="setup-inputs">
+                <input type="text" value="${p.name}" class="name-input" data-idx="${index}">
+                <input type="range" min="0" max="360" value="${getHueFromHex(p.color)}" class="hue-slider" data-idx="${index}">
+            </div>
+            <div class="setup-opts">
+                <button class="setup-btn var-btn" data-idx="${index}">${p.variant === 'default' ? 'Boy' : 'Girl'}</button>
+                <button class="setup-btn acc-btn" data-idx="${index}">${p.accessory}</button>
+            </div>
+            ${activePlayers.length > 2 ? `<button class="del-btn" data-idx="${index}">Remove</button>` : ''}
+        `;
+
         playerConfigGrid.appendChild(card);
+
         const sketch = (sketchP) => {
             const avatars = new AvatarSystem(sketchP);
-            let expression = 'idle'; let nextBlink = 0;
-            sketchP.setup = () => { sketchP.createCanvas(200, 200); };
+            let expression = 'idle';
+            let nextBlink = 0;
+
+            sketchP.setup = () => {
+                sketchP.createCanvas(200, 200);
+            };
             sketchP.draw = () => {
-                sketchP.clear(); sketchP.push(); sketchP.translate(100, 100);
-                const t = sketchP.millis(); const breath = sketchP.sin(t * 0.003) * 0.03; sketchP.scale(1 + breath, 1 - breath);
-                if (t > nextBlink) { expression = sketchP.random(['idle', 'happy', 'stunned']); nextBlink = t + sketchP.random(2000, 5000); setTimeout(() => expression = 'idle', 1000); }
-                const currP = players.getPlayer(index);
-                if (currP) avatars.draw({ x: 0, y: 0, size: 90, color: currP.color, variant: currP.variant, accessory: currP.accessory, expression: expression });
+                sketchP.clear();
+                sketchP.push();
+                sketchP.translate(100, 100);
+                const t = sketchP.millis();
+                const breath = sketchP.sin(t * 0.003) * 0.03;
+                sketchP.scale(1 + breath, 1 - breath);
+
+                if (t > nextBlink) {
+                    const exps = ['idle', 'happy', 'stunned'];
+                    expression = sketchP.random(exps);
+                    nextBlink = t + sketchP.random(2000, 5000);
+                    setTimeout(() => expression = 'idle', 1000);
+                }
+
+                // FIX: Get FRESH player data directly from manager every frame
+                const freshP = players.getPlayer(index); 
+                if (freshP) {
+                    avatars.draw({
+                        x: 0, y: 0, size: 90,
+                        color: freshP.color, variant: freshP.variant, accessory: freshP.accessory, expression: expression
+                    });
+                }
                 sketchP.pop();
             };
         };
         lobbyInstances.push(new p5(sketch, previewId));
     });
+
     bindLobbyInputs();
 }
 
 function bindLobbyInputs() {
     const accessories = AvatarSystem.ACCESSORIES;
-    document.querySelectorAll('.name-input').forEach(el => { el.addEventListener('input', (e) => { if(e.target.disabled) return; players.updatePlayer(e.target.dataset.idx, { name: e.target.value }); }); });
-    document.querySelectorAll('.hue-slider').forEach(el => { el.addEventListener('input', (e) => { if(e.target.disabled) return; const hue = e.target.value; const color = hslToHex(hue, 85, 60); players.updatePlayer(e.target.dataset.idx, { color: color }); }); });
-    document.querySelectorAll('.var-btn').forEach(el => { el.addEventListener('click', (e) => { if(e.target.disabled) return; const idx = e.target.dataset.idx; const p = players.getPlayer(idx); const newVar = p.variant === 'default' ? 'feminine' : 'default'; players.updatePlayer(p.id, { variant: newVar }); e.target.textContent = newVar === 'default' ? 'Boy' : 'Girl'; audio.play('click'); }); });
-    document.querySelectorAll('.acc-btn').forEach(el => { el.addEventListener('click', (e) => { if(e.target.disabled) return; const idx = e.target.dataset.idx; const p = players.getPlayer(idx); let currIdx = accessories.indexOf(p.accessory); if (currIdx === -1) currIdx = 0; let nextAcc = accessories[(currIdx + 1) % accessories.length]; players.updatePlayer(p.id, { accessory: nextAcc }); e.target.textContent = nextAcc; audio.play('click'); }); });
-    document.querySelectorAll('.del-btn').forEach(el => { el.addEventListener('click', (e) => { audio.play('click'); players.removePlayer(e.target.dataset.idx); renderVisualLobby(); }); });
+
+    // NAME INPUT
+    const nameInputs = document.querySelectorAll('.name-input');
+    nameInputs.forEach(el => {
+        el.addEventListener('input', (e) => {
+            const idx = parseInt(e.target.dataset.idx);
+            players.updatePlayer(idx, { name: e.target.value });
+        });
+    });
+
+    // COLOR SLIDER
+    const hueSliders = document.querySelectorAll('.hue-slider');
+    hueSliders.forEach(el => {
+        el.addEventListener('input', (e) => {
+            const idx = parseInt(e.target.dataset.idx);
+            const hue = e.target.value;
+            const color = hslToHex(hue, 85, 60);
+            players.updatePlayer(idx, { color: color });
+        });
+    });
+
+    // VARIANT BUTTON
+    const varBtns = document.querySelectorAll('.var-btn');
+    varBtns.forEach(el => {
+        el.addEventListener('click', (e) => {
+            const idx = parseInt(e.target.dataset.idx);
+            const p = players.getPlayer(idx);
+            const newVar = p.variant === 'default' ? 'feminine' : 'default';
+            players.updatePlayer(idx, { variant: newVar });
+            e.target.textContent = newVar === 'default' ? 'Boy' : 'Girl';
+            audio.play('click');
+        });
+    });
+
+    // ACCESSORY BUTTON
+    const accBtns = document.querySelectorAll('.acc-btn');
+    accBtns.forEach(el => {
+        el.addEventListener('click', (e) => {
+            const idx = parseInt(e.target.dataset.idx);
+            const p = players.getPlayer(idx);
+            let currIdx = accessories.indexOf(p.accessory);
+            if (currIdx === -1) currIdx = 0;
+            let nextAcc = accessories[(currIdx + 1) % accessories.length];
+            players.updatePlayer(idx, { accessory: nextAcc });
+            e.target.textContent = nextAcc;
+            audio.play('click');
+        });
+    });
+
+    // REMOVE BUTTON
+    const delBtns = document.querySelectorAll('.del-btn');
+    delBtns.forEach(el => {
+        el.addEventListener('click', (e) => {
+            const idx = parseInt(e.target.dataset.idx);
+            audio.play('click');
+            players.removePlayer(idx);
+            renderVisualLobby(); // Re-render grid
+        });
+    });
 }
 
 function hslToHex(h, s, l) {
     l /= 100; const a = s * Math.min(l, 1 - l) / 100;
-    const f = n => { const k = (n + h / 30) % 12; const color = l - a * Math.max(Math.min(k - 3, 9 - k, 1), -1); return Math.round(255 * color).toString(16).padStart(2, '0'); };
+    const f = n => {
+        const k = (n + h / 30) % 12;
+        const color = l - a * Math.max(Math.min(k - 3, 9 - k, 1), -1);
+        return Math.round(255 * color).toString(16).padStart(2, '0');
+    };
     return `#${f(0)}${f(8)}${f(4)}`;
 }
 
 function getHueFromHex(hex) {
-    let r = parseInt(hex.substring(1, 3), 16) / 255; let g = parseInt(hex.substring(3, 5), 16) / 255; let b = parseInt(hex.substring(5, 7), 16) / 255;
-    let max = Math.max(r, g, b), min = Math.min(r, g, b); let h, s, l = (max + min) / 2;
-    if (max == min) { h = s = 0; } else { let d = max - min; s = l > 0.5 ? d / (2 - max - min) : d / (max + min); switch (max) { case r: h = (g - b) / d + (g < b ? 6 : 0); break; case g: h = (b - r) / d + 2; break; case b: h = (r - g) / d + 4; break; } h /= 6; }
+    let r = parseInt(hex.substring(1, 3), 16) / 255;
+    let g = parseInt(hex.substring(3, 5), 16) / 255;
+    let b = parseInt(hex.substring(5, 7), 16) / 255;
+    let max = Math.max(r, g, b), min = Math.min(r, g, b);
+    let h, s, l = (max + min) / 2;
+    if (max == min) { h = s = 0; }
+    else {
+        let d = max - min;
+        s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+        switch (max) {
+            case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+            case g: h = (b - r) / d + 2; break;
+            case b: h = (r - g) / d + 4; break;
+        }
+        h /= 6;
+    }
     return h * 360;
 }
 
-function setupListeners() { }
-function attachGlobalSoundListeners() { document.body.addEventListener('mouseover', (e) => { if (e.target.matches('button, .game-card, input, .banner-btn, .icon-btn')) { audio.play('ui-hover'); } }); document.body.addEventListener('click', (e) => { if (e.target.matches('button, .game-card, .banner-btn, .icon-btn')) { audio.play('click'); } }); }
+function setupListeners() {
+    backBtn.textContent = "Exit Game";
+    backBtn.addEventListener('click', returnToHub);
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && currentMode === 'game') returnToHub();
+    });
+}
+
+function attachGlobalSoundListeners() {
+    document.body.addEventListener('mouseover', (e) => {
+        if (e.target.matches('button, .game-card, input, .banner-btn, .icon-btn')) {
+            audio.play('ui-hover');
+        }
+    });
+    document.body.addEventListener('click', (e) => {
+        if (e.target.matches('button, .game-card, .banner-btn, .icon-btn')) {
+            audio.play('click');
+        }
+    });
+}
 
 init();
