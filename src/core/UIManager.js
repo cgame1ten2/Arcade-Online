@@ -7,7 +7,6 @@ export default class UIManager {
         this.scoreboard = document.getElementById('ui-scoreboard');
         this.centerMessage = document.getElementById('ui-center-message');
 
-        // Ensure Overlay Elements Exist
         if (!document.getElementById('transition-curtain')) {
             const curtain = document.createElement('div');
             curtain.id = 'transition-curtain';
@@ -23,7 +22,6 @@ export default class UIManager {
         this.transitionCurtain = document.getElementById('transition-curtain');
         this.tutorialOverlay = document.getElementById('tutorial-overlay');
 
-        // Inject CSS for Heart Icons if not present
         if (!document.getElementById('heart-style')) {
             const style = document.createElement('style');
             style.id = 'heart-style';
@@ -45,12 +43,11 @@ export default class UIManager {
         }
     }
 
-    // --- TRANSITION SYSTEM ---
     showTransition(callback) {
         this.transitionCurtain.classList.add('active');
         setTimeout(() => {
             if (callback) callback();
-        }, 500); // Wait for fade in
+        }, 500);
     }
 
     hideTransition() {
@@ -58,8 +55,11 @@ export default class UIManager {
     }
 
     showTutorial(gameConfig, duration, onComplete) {
+        // Updated to use SVG instead of emoji
         this.tutorialOverlay.innerHTML = `
-            <span class="tutorial-icon">🕹️</span>
+            <div style="width:80px; height:80px; margin:0 auto 20px auto;">
+                <svg viewBox="0 0 24 24" fill="#2c3e50"><path d="M21,6H3C1.9,6,1,6.9,1,8v8c0,1.1,0.9,2,2,2h18c1.1,0,2-0.9,2-2V8C23,6.9,22.1,6,21,6z M11,13H8v3H6v-3H3v-2h3V8h2v3h3V13z M15.5,15c-0.83,0-1.5-0.67-1.5-1.5s0.67-1.5,1.5-1.5s1.5,0.67,1.5,1.5S16.33,15,15.5,15z M19.5,12 c-0.83,0-1.5-0.67-1.5-1.5S18.67,9,19.5,9S21,9.67,21,10.5S20.33,12,19.5,12z"/></svg>
+            </div>
             <div class="tutorial-title">${gameConfig.title}</div>
             <div class="tutorial-text">${gameConfig.tutorial || "Good luck!"}</div>
             <div class="tutorial-progress"><div class="tutorial-bar"></div></div>
@@ -67,7 +67,6 @@ export default class UIManager {
         
         this.tutorialOverlay.classList.add('visible');
         
-        // Trigger bar animation slightly after render
         setTimeout(() => {
             const bar = this.tutorialOverlay.querySelector('.tutorial-bar');
             if(bar) bar.style.width = '100%';
@@ -79,7 +78,6 @@ export default class UIManager {
         }, duration);
     }
 
-    // --- SCOREBOARD ---
     updateScoreboard(players) {
         if (!this.scoreboard) return;
         this.scoreboard.innerHTML = '';
