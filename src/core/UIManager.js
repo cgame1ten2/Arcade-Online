@@ -50,6 +50,7 @@ export default class UIManager {
         }
     }
 
+    // --- COUNTDOWN ---
     runCountdown(callback) {
         this.countdownOverlay.innerHTML = '';
         const sequence = ['3', '2', '1', 'GO!'];
@@ -68,6 +69,7 @@ export default class UIManager {
         showNext();
     }
 
+    // --- CONFETTI ---
     fireConfetti() {
         this.confettiCanvas.width = window.innerWidth;
         this.confettiCanvas.height = window.innerHeight;
@@ -115,6 +117,7 @@ export default class UIManager {
         requestAnimationFrame(this._animateConfetti);
     }
 
+    // --- TRANSITION SYSTEM ---
     showTransition(callback) {
         this.transitionCurtain.classList.add('active');
         setTimeout(() => {
@@ -146,14 +149,17 @@ export default class UIManager {
         }, duration);
     }
 
+    // --- SCOREBOARD ---
     updateScoreboard(players) {
         if (!this.scoreboard) return;
         this.scoreboard.innerHTML = '';
+
         players.forEach(p => {
             const badge = document.createElement('div');
             badge.className = 'player-badge';
             badge.style.borderBottom = `3px solid ${p.color}`;
             if (p.isEliminated) badge.style.opacity = '0.5';
+
             let statusHTML = '';
             if (p.statusType === 'hearts') {
                 const lives = parseInt(p.customStatus) || 0;
@@ -167,6 +173,7 @@ export default class UIManager {
             } else {
                 statusHTML = `<span class="p-score">${p.customStatus !== undefined ? p.customStatus : (p.score || 0)}</span>`;
             }
+
             badge.innerHTML = `<span class="p-dot" style="background:${p.color}"></span><span class="p-name">${p.name}</span>${statusHTML}`;
             this.scoreboard.appendChild(badge);
         });
@@ -174,7 +181,12 @@ export default class UIManager {
 
     showMessage(title, subtitle, buttonText = null, onButtonClick = null) {
         if (!this.centerMessage) return;
-        this.centerMessage.innerHTML = `<div class="message-card"><h1>${title}</h1><p>${subtitle}</p>${buttonText ? `<button id="msg-btn" class="primary-btn">${buttonText}</button>` : ''}</div>`;
+        this.centerMessage.innerHTML = `
+            <div class="message-card">
+                <h1>${title}</h1><p>${subtitle}</p>
+                ${buttonText ? `<button id="msg-btn" class="primary-btn">${buttonText}</button>` : ''}
+            </div>
+        `;
         this.centerMessage.classList.add('visible');
         if (buttonText && onButtonClick) this._bindButton('msg-btn', onButtonClick);
     }
@@ -194,6 +206,7 @@ export default class UIManager {
             const isWinner = p.score === maxScore && maxScore > 0;
             const barClass = isWinner ? 'podium-bar winner' : 'podium-bar';
             const canvasId = `podium-av-${index}`;
+
             podiumHTML += `<div class="podium-column"><div class="podium-canvas-wrapper" id="${canvasId}"></div><div class="${barClass}" style="height: ${heightPerc}px;"><span class="podium-rank">${p.score}</span></div><div class="podium-name">${p.name}</div></div>`;
         });
         podiumHTML += '</div>';
@@ -246,12 +259,13 @@ export default class UIManager {
         }, 50);
     }
 
-    showTournamentStandings(standings, players, title, subtitle, maxTotal, onNext) {
+    // UPDATED: Accepts stats array with { oldPoints, newPoints } and optional maxScore
+    showTournamentStandings(stats, players, title, subtitle, onNext, maxScoreOverride = null) {
         if (!this.centerMessage) return;
 
-        const sortedStats = [...standings].sort((a, b) => b.points - a.points);
-        // Use provided MaxTotal to keep scale consistent (e.g. 15 points max)
-        const maxPoints = Math.max(1, maxTotal);
+        const sortedStats = [...stats].sort((a, b) => b.newPoints - a.newPoints);
+        // Use override if provided, else use highest current score
+        const maxPoints = maxScoreOverride || Math.max(1, sortedStats[0].newPoints);
 
         let rowsHTML = '<div class="standings-table">';
         sortedStats.forEach((stat, idx) => {
@@ -259,8 +273,8 @@ export default class UIManager {
             const isLeader = idx === 0;
             const canvasId = `stand-av-${idx}`;
             
-            // Calculate Start Width based on Previous Points
-            const prevPercent = (stat.prevPoints / maxPoints) * 100;
+            // Start at Old Percentage
+            const startPercent = (stat.oldPoints / maxPoints) * 100;
 
             rowsHTML += `
                 <div class="standing-row ${isLeader ? 'leader' : ''}">
@@ -269,10 +283,10 @@ export default class UIManager {
                     <div class="st-info">
                         <div class="st-name">${p.name}</div>
                         <div class="st-bar-bg">
-                            <div class="st-bar-fill" id="bar-${idx}" style="width:${prevPercent}%; background:${p.color}"></div>
+                            <div class="st-bar-fill" id="bar-${idx}" style="width:${startPercent}%; background:${p.color}"></div>
                         </div>
                     </div>
-                    <span class="st-points">${stat.points}</span>
+                    <span class="st-points">${stat.newPoints}</span>
                 </div>
             `;
         });
@@ -290,13 +304,15 @@ export default class UIManager {
         this.centerMessage.classList.add('visible');
         this._bindButton('tourney-next-btn', onNext);
 
-        // ANIMATE BARS
+        // TRIGGER ANIMATIONS
         setTimeout(() => {
             sortedStats.forEach((stat, idx) => {
+                // 1. Animate Bar to New Width
                 const bar = document.getElementById(`bar-${idx}`);
-                const targetPercent = (stat.points / maxPoints) * 100;
-                if(bar) bar.style.width = `${targetPercent}%`;
+                const endPercent = (stat.newPoints / maxPoints) * 100;
+                if(bar) bar.style.width = `${endPercent}%`;
 
+                // 2. Render Avatar
                 const p = players.find(pl => pl.id === stat.id);
                 const canvasId = `stand-av-${idx}`;
                 new p5((sketch) => {
@@ -309,7 +325,7 @@ export default class UIManager {
                     };
                 }, canvasId);
             });
-        }, 300); // Slight delay to ensure DOM is ready and visual transition occurs
+        }, 100);
     }
 
     showTurnMessage(text, color) {
