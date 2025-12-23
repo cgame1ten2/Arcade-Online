@@ -14,8 +14,6 @@ export default class TournamentManager {
         this.currentRoundIdx = 0;
         this.gameQueue = [];
         this.standings = [];
-        
-        // Listen for Replay requests from Main (handled in GameRunner generally, but here for context)
     }
 
     startTournament(numberOfGames) {
@@ -23,11 +21,10 @@ export default class TournamentManager {
         this.roundsTotal = numberOfGames;
         this.currentRoundIdx = 0;
 
-        // Reset Standings - Initialize with 0
+        // Reset Standings
         this.standings = this.players.getActivePlayers().map(p => ({
             id: p.id,
-            points: 0,
-            prevPoints: 0 // New field for animation
+            points: 0
         }));
 
         this.draftGames(numberOfGames);
@@ -52,14 +49,24 @@ export default class TournamentManager {
 
         this.runner.audioManager.setTrack('lobby');
 
-        // Pass the max possible points for scaling
-        // Max points per round is 3. Total possible = rounds * 3.
-        const maxPossible = this.roundsTotal * 3;
+        // Pass 'null' for maxScore here? Actually we can pass roundsTotal*3
+        // But for "Next Round" screen, animation isn't critical, static is fine.
+        // We'll just reuse the same UI function but maybe without animation params if not needed.
+        
+        // Wait, showTournamentStandings is primarily for *results*.
+        // For "Next Round", we might want to show current standings (no animation).
+        // Let's create a display structure where old == new.
+        
+        const displayData = this.standings.map(s => ({
+            id: s.id,
+            oldPoints: s.points,
+            newPoints: s.points
+        }));
 
-        this.ui.showTournamentStandings(this.standings, this.players.getActivePlayers(), title, subtitle, maxPossible, () => {
+        this.ui.showTournamentStandings(displayData, this.players.getActivePlayers(), title, subtitle, () => {
             this.runner.audioManager.setTrack('game');
             this.launchGame(nextGame);
-        });
+        }, this.roundsTotal * 3);
     }
 
     launchGame(gameConfig) {
@@ -71,14 +78,6 @@ export default class TournamentManager {
         if (gameConfig.id === 'red-light') rules.winValue = 3; 
         if (gameConfig.id === 'code-breaker') rules.winValue = 1; 
 
-        // Launch with autoStart: false (controlled by Main for tutorial/countdown)
-        // Note: Main.js triggers the tutorial overlay via `enterGameMode`. 
-        // TournamentManager actually bypasses Main's `enterGameMode` usually.
-        // We need to trigger the countdown here or let Main handle it.
-        // To keep it simple: We mount via runner, then manually trigger countdown.
-        
-        window.dispatchEvent(new CustomEvent('tournament-game-start', { detail: gameConfig }));
-        
         this.runner.mount(
             gameConfig.class,
             'game-canvas-container',
@@ -89,28 +88,44 @@ export default class TournamentManager {
     }
 
     handleGameComplete(gameResults) {
+        // Calculate deltas
         const sorted = [...gameResults].sort((a, b) => b.score - a.score);
-
-        // Update Previous Points before adding new ones
-        this.standings.forEach(s => s.prevPoints = s.points);
-
+        
+        // Create a map of ID -> Points Added
+        const pointsAdded = {};
         sorted.forEach((p, index) => {
-            let points = 0;
-            if (index === 0) points = 3;
-            else if (index === 1) points = 2;
-            else if (index === 2) points = 1;
+            let pts = 0;
+            if (index === 0) pts = 3;
+            else if (index === 1) pts = 2;
+            else if (index === 2) pts = 1;
+            pointsAdded[p.id] = pts;
+        });
 
-            const standing = this.standings.find(s => s.id === p.id);
-            if (standing) standing.points += points;
+        // Prepare Data for UI (Old -> New)
+        const displayData = this.standings.map(s => {
+            const added = pointsAdded[s.id] || 0;
+            const old = s.points;
+            s.points += added; // Update internal state
+            return {
+                id: s.id,
+                oldPoints: old,
+                newPoints: s.points
+            };
         });
 
         this.currentRoundIdx++;
 
-        if (this.currentRoundIdx >= this.roundsTotal) {
-            this.endTournament();
-        } else {
-            this.showNextRoundScreen();
-        }
+        // Show Results Screen with Animation
+        const title = `Round ${this.currentRoundIdx} Results`;
+        let subtitle = (this.currentRoundIdx >= this.roundsTotal) ? "Final Standings!" : "Next Round Coming Up...";
+
+        this.ui.showTournamentStandings(displayData, this.players.getActivePlayers(), title, subtitle, () => {
+            if (this.currentRoundIdx >= this.roundsTotal) {
+                this.endTournament();
+            } else {
+                this.showNextRoundScreen();
+            }
+        }, this.roundsTotal * 3);
     }
 
     endTournament() {
