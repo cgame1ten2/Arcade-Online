@@ -1,3 +1,5 @@
+--- START OF FILE mobile.html ---
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -19,10 +21,7 @@
         #screen-lobby { background: #2c3e50; }
         .player-card { background: white; border-radius: 16px; padding: 20px; width: 90%; max-width: 350px; display: flex; flex-direction: column; gap: 15px; color: #333; }
         .setup-preview { width: 100%; height: 200px; background: #eee; border-radius: 12px; display: flex; justify-content: center; align-items: center; overflow: hidden; }
-        
-        /* Updated Input Style for better padding/sizing */
         .name-input { width: 100%; padding: 10px 15px; font-size: 1.2rem; text-align: center; border: 1px solid #ccc; border-radius: 8px; box-sizing: border-box; }
-        
         .hue-slider { -webkit-appearance: none; appearance: none; width: 100%; height: 12px; border-radius: 6px; background: linear-gradient(to right, #ff0000, #ffff00, #00ff00, #00ffff, #0000ff, #ff00ff, #ff0000); outline: none; margin: 10px 0; }
         .hue-slider::-webkit-slider-thumb { -webkit-appearance: none; width: 28px; height: 28px; background: white; border: 3px solid #333; border-radius: 50%; box-shadow: 0 2px 5px rgba(0,0,0,0.3); }
         .opts-row { display: flex; gap: 10px; }
@@ -223,7 +222,6 @@
 
                 // 2. Check Watchdog (Timeout)
                 if (now - lastPacketTime > 4000) {
-                    // No data received from host for 4 seconds
                     showDisconnectScreen("Host Lost", "Host stopped responding.");
                 }
             }, 2000); 
@@ -244,6 +242,9 @@
             const url = new URL(window.location.href);
             url.searchParams.delete('room');
             window.history.pushState({}, '', url);
+            
+            // Clear Input
+            document.getElementById('room-code').value = '';
             
             if(peer) peer.destroy();
             if(heartbeatInterval) clearInterval(heartbeatInterval);
@@ -386,7 +387,6 @@
                 p.setup = () => { p.createCanvas(200, 200); sys = new AvatarSystem(p); }; 
                 p.draw = () => { 
                     p.clear(); 
-                    // FIXED: Moved Y down to 120 and Reduced Size to 110 to fit Bunny Ears/Accessories
                     p.translate(100, 120); 
                     sys.draw({ x:0, y:0, size:110, color: player.color, variant: player.variant, accessory: player.accessory, expression: 'happy' }); 
                 }; 
@@ -394,8 +394,37 @@
             p5Lobby = new p5(sketch, 'lobby-avatar'); 
         }
 
-        function initP5Controller() { if(p5Btn) p5Btn.remove(); document.getElementById('btn-avatar-target').innerHTML = ''; const sketch = (p) => { let sys; p.setup = () => { p.createCanvas(150, 150); sys = new AvatarSystem(p); }; p.draw = () => { p.clear(); p.translate(75, 75); sys.draw({ x:0, y:0, size:100, color: player.color, variant: player.variant, accessory: player.accessory, expression: 'angry' }); }; }; p5Btn = new p5(sketch, 'btn-avatar-target'); }
-        function initP5Touchpad() { if(p5Touch) p5Touch.remove(); document.getElementById('touch-avatar-target').innerHTML = ''; const sketch = (p) => { let sys; p.setup = () => { p.createCanvas(100, 100); sys = new AvatarSystem(p); }; p.draw = () => { p.clear(); p.translate(50, 50); sys.draw({ x:0, y:0, size:80, color: player.color, variant: player.variant, accessory: player.accessory, expression: 'idle' }); }; }; p5Touch = new p5(sketch, 'touch-avatar-target'); }
+        // FIXED: Lowered translate Y (75 -> 90) and reduced size (100 -> 90)
+        function initP5Controller() { 
+            if(p5Btn) p5Btn.remove(); 
+            document.getElementById('btn-avatar-target').innerHTML = ''; 
+            const sketch = (p) => { 
+                let sys; 
+                p.setup = () => { p.createCanvas(150, 150); sys = new AvatarSystem(p); }; 
+                p.draw = () => { 
+                    p.clear(); 
+                    p.translate(75, 90); // Adjusted
+                    sys.draw({ x:0, y:0, size: 90, color: player.color, variant: player.variant, accessory: player.accessory, expression: 'angry' }); 
+                }; 
+            }; 
+            p5Btn = new p5(sketch, 'btn-avatar-target'); 
+        }
+
+        // FIXED: Lowered translate Y (50 -> 60) and reduced size (80 -> 70)
+        function initP5Touchpad() { 
+            if(p5Touch) p5Touch.remove(); 
+            document.getElementById('touch-avatar-target').innerHTML = ''; 
+            const sketch = (p) => { 
+                let sys; 
+                p.setup = () => { p.createCanvas(100, 100); sys = new AvatarSystem(p); }; 
+                p.draw = () => { 
+                    p.clear(); 
+                    p.translate(50, 60); // Adjusted
+                    sys.draw({ x:0, y:0, size: 70, color: player.color, variant: player.variant, accessory: player.accessory, expression: 'idle' }); 
+                }; 
+            }; 
+            p5Touch = new p5(sketch, 'touch-avatar-target'); 
+        }
         
         function updateControllerVisuals() { 
             btn.style.backgroundColor = player.color; 
