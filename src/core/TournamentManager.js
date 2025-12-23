@@ -70,16 +70,9 @@ export default class TournamentManager {
         if (gameConfig.id === 'red-light') rules.winValue = 3; 
         if (gameConfig.id === 'code-breaker') rules.winValue = 1; 
 
-        // UPDATED: Determine Controller type
-        let screenType = 'CONTROLLER';
-        if (gameConfig.id === 'avatar-match') {
-            screenType = 'TOUCHPAD';
-        }
-        
-        // Notify main.js to update network state
-        window.dispatchEvent(new CustomEvent('update-screen-type', { detail: screenType }));
+        // FIX: Notify main.js about the game change so it can update currentScreenType
+        window.dispatchEvent(new CustomEvent('game-selected', { detail: gameConfig.id }));
 
-        // Standardized Transition & Tutorial Flow
         this.ui.showTransition(() => {
             this.runner.mount(
                 gameConfig.class,
@@ -146,7 +139,6 @@ export default class TournamentManager {
         this.runner.audioManager.setTrack('victory');
 
         this.ui.showPodium(finalResults, "Back to Hub", () => {
-            // FIXED: Use callback to prevent page reload/disconnect
             if (this.onExitCallback) {
                 this.onExitCallback();
             }
