@@ -9,8 +9,12 @@ export default class NetworkManager {
         this.roomId = null;
         this.systemLag = 0; 
         
-        // Corrected loop call
         setInterval(() => this.maintenanceLoop(), 1000);
+
+        // --- NEW: Inform players if Host closes ---
+        window.addEventListener('beforeunload', () => {
+            this.broadcastState('HOST_CLOSED', 'IDLE', {}, 'HOST_CLOSED');
+        });
     }
 
     async hostGame() {
@@ -35,6 +39,14 @@ export default class NetworkManager {
 
     handleData(conn, data) {
         if (data.type === 'HELLO') { this.registerPlayer(conn, data.uuid); return; }
+        
+        // --- NEW: Handle Heartbeat silently ---
+        if (data.type === 'HEARTBEAT') {
+            const client = this.connections.get(conn.peer);
+            if(client) client.lastHeartbeat = performance.now();
+            return;
+        }
+
         const client = this.connections.get(conn.peer);
         if (!client) return; 
         client.lastHeartbeat = performance.now();
@@ -102,12 +114,13 @@ export default class NetworkManager {
         this.systemLag = Math.floor((totalRTT / this.connections.size) / 2);
     }
 
-    broadcastState(stateType, context = 'IDLE', payload = {}) {
+    // Updated to accept an overrideType to send HOST_CLOSED packets
+    broadcastState(stateType, context = 'IDLE', payload = {}, overrideType = 'STATE_CHANGE') {
         this.connections.forEach((client) => {
             const player = this.players.getPlayerById(client.playerId);
             if(!player) return;
             const packet = {
-                type: 'STATE_CHANGE', state: stateType, context: context,
+                type: overrideType, state: stateType, context: context,
                 player: { color: player.color, name: player.name, accessory: player.accessory, variant: player.variant },
                 ...payload
             };
