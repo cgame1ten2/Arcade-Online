@@ -68,8 +68,8 @@ export default class BaseGame {
         this.isDestroyed = false;
         this.timerLastTick = 0;
         
-        // Track if game has ever started to override autoStart:false on replays
-        this.hasStartedOnce = false; 
+        // Track if this is the very first boot up of the game instance
+        this.isFirstBoot = true; 
     }
 
     setup() {
@@ -83,6 +83,7 @@ export default class BaseGame {
         this.state.round = 0;
         this.state.winner = null;
         this.state.phase = 'SETUP';
+        this.isFirstBoot = true;
 
         // --- HARD RESET PLAYERS ---
         this.players.forEach(p => {
@@ -100,16 +101,11 @@ export default class BaseGame {
         if (this.audio && this.mode !== 'demo') this.audio.setTrack('game');
 
         this.onSetup(); 
-        this.updateUI(); // Force visual refresh of hearts/score
+        this.updateUI(); 
 
-        // FIX: If we have started once (replay), ignore autoStart:false and GO.
-        if (this.config.autoStart || this.hasStartedOnce) {
-            this.startNewRound();
-        }
-        
-        if (this.mode !== 'demo') {
-            window.dispatchEvent(new CustomEvent('game-state-change', { detail: 'PLAYING' }));
-        }
+        // Always start a "Round" to initialize entities (cars, players, etc)
+        // preventing blank screens or crashes in onDraw
+        this.startNewRound();
     }
 
     draw() {
@@ -244,11 +240,15 @@ export default class BaseGame {
     startNewRound() {
         if (this.isDestroyed) return;
 
-        // Flag that we have officially started at least once
-        this.hasStartedOnce = true;
-
         this.state.phase = 'INTRO';
-        this.state.round++;
+        
+        // Only increment round count if we are actually playing, not just initializing the background
+        if (!this.config.autoStart && this.isFirstBoot) {
+            // Don't increment round
+        } else {
+            this.state.round++;
+        }
+        
         this.state.isRoundActive = true;
         this.state.timer = this.config.roundDuration; 
         
@@ -281,16 +281,30 @@ export default class BaseGame {
         this.onRoundStart();
 
         if (this.mode !== 'demo') {
-            window.dispatchEvent(new CustomEvent('game-state-change', { detail: 'PLAYING' }));
-        }
-
-        const delay = this.mode === 'demo' ? 100 : 800;
-        setTimeout(() => {
-            if (!this.isDestroyed) {
-                this.state.phase = 'PLAYING';
-                this.timerLastTick = this.p.millis();
+            // If autoStart is false and it's first boot, stay in TUTORIAL/INTRO phase
+            // Do NOT transition to PLAYING automatically
+            if (!this.config.autoStart && this.isFirstBoot) {
+                this.state.phase = 'TUTORIAL';
+                this.isFirstBoot = false; // Next time startNewRound is called, we go for real
+            } else {
+                window.dispatchEvent(new CustomEvent('game-state-change', { detail: 'PLAYING' }));
+                const delay = this.mode === 'demo' ? 100 : 800;
+                setTimeout(() => {
+                    if (!this.isDestroyed) {
+                        this.state.phase = 'PLAYING';
+                        this.timerLastTick = this.p.millis();
+                    }
+                }, delay);
             }
-        }, delay);
+        } else {
+            // Demo mode always starts
+            setTimeout(() => {
+                if (!this.isDestroyed) {
+                    this.state.phase = 'PLAYING';
+                    this.timerLastTick = this.p.millis();
+                }
+            }, 100);
+        }
     }
 
     nextTurn() {
