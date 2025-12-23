@@ -162,8 +162,8 @@ function showQrModal(code) {
             target.innerHTML = ''; 
             new QRCode(target, {
                 text: joinUrl,
-                width: 128,
-                height: 128,
+                width: 256,
+                height: 256,
                 colorDark : "#2c3e50",
                 colorLight : "#ffffff",
                 correctLevel : QRCode.CorrectLevel.H
@@ -438,3 +438,4 @@ function setupListeners() { }
 function attachGlobalSoundListeners() { document.body.addEventListener('mouseover', (e) => { if (e.target.matches('button, .game-card, input, .banner-btn, .icon-btn')) { audio.play('ui-hover'); } }); document.body.addEventListener('click', (e) => { if (e.target.matches('button, .game-card, .banner-btn, .icon-btn')) { audio.play('click'); } }); }
 
 init();
+
