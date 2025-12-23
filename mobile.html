@@ -1,3 +1,5 @@
+--- START OF FILE mobile.html ---
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -45,6 +47,11 @@
         select.game-select { width: 80%; padding: 15px; font-size: 1.1rem; border-radius: 12px; margin-bottom: 15px; border: none; font-weight: bold; }
         
         .close-menu-btn { position: absolute; top: 20px; right: 20px; background: none; border: none; color: white; font-size: 40px; cursor: pointer; }
+
+        /* RECONNECT OVERLAY */
+        #screen-disconnect { background: rgba(44, 62, 80, 0.95); color: white; z-index: 3000; text-align: center; }
+        .spinner { width: 50px; height: 50px; border: 5px solid rgba(255,255,255,0.3); border-radius: 50%; border-top-color: #f1c40f; animation: spin 1s ease-in-out infinite; margin-bottom: 20px; }
+        @keyframes spin { to { transform: rotate(360deg); } }
         
         .hidden { display: none !important; }
     </style>
@@ -58,6 +65,14 @@
         <input type="text" id="room-code" class="code-input" placeholder="CODE" maxlength="4">
         <button class="action-btn" onclick="connect()">JOIN GAME</button>
         <p id="status" style="margin-top: 20px; color: #f1c40f; opacity: 0;">Connecting...</p>
+    </div>
+
+    <!-- RECONNECTING -->
+    <div id="screen-disconnect" class="screen">
+        <div class="spinner"></div>
+        <h2>Disconnected</h2>
+        <p>Trying to reconnect...</p>
+        <button class="action-btn" style="margin-top:20px; background:#e74c3c" onclick="location.reload()">Reload</button>
     </div>
 
     <!-- LOBBY -->
@@ -124,23 +139,82 @@
         let player = { id: -1, color: '#e74c3c', hue: 0, name: 'Guest', accessory: 'Bear Ears', variant: 'default' };
         let p5Lobby, p5Btn, p5Touch; 
         let currentContext = 'IDLE'; 
+        let heartbeatInterval = null;
+        let wakeLock = null;
         const accessories = AvatarSystem.ACCESSORIES;
         
         let myUUID = localStorage.getItem('wa_uuid');
         if (!myUUID) { myUUID = 'user-' + Math.random().toString(36).substr(2, 9); localStorage.setItem('wa_uuid', myUUID); }
 
+        // --- WAKE LOCK ---
+        async function requestWakeLock() {
+            try {
+                if ('wakeLock' in navigator) {
+                    wakeLock = await navigator.wakeLock.request('screen');
+                    console.log('Wake Lock active');
+                }
+            } catch (err) { console.log('Wake Lock Error:', err); }
+        }
+
         window.connect = () => {
             const code = document.getElementById('room-code').value.toUpperCase().trim();
             if(code.length < 4) return;
+            
             document.getElementById('status').style.opacity = 1;
+            requestWakeLock(); // Trigger on interaction
+            
             peer = new Peer();
             peer.on('open', (id) => {
-                conn = peer.connect(`wonder-${code}`);
-                conn.on('open', () => { document.getElementById('status').innerText = "Authenticating..."; });
-                conn.on('data', handleData);
-                conn.on('close', () => { alert("Host Disconnected"); location.reload(); });
+                connectToHost(code);
+            });
+            peer.on('error', (err) => {
+                console.error(err);
+                showDisconnectScreen();
+            });
+            peer.on('disconnected', () => {
+                showDisconnectScreen();
+                // PeerJS specific: reconnect to signalling server
+                peer.reconnect();
             });
         };
+
+        function connectToHost(code) {
+            if(conn) conn.close();
+            conn = peer.connect(`wonder-${code}`);
+            
+            conn.on('open', () => { 
+                document.getElementById('status').innerText = "Authenticating...";
+                hideDisconnectScreen();
+                startHeartbeat();
+            });
+            
+            conn.on('data', handleData);
+            
+            conn.on('close', () => {
+                showDisconnectScreen();
+                // Attempt auto-reconnect logic could go here, 
+                // but usually requires user action or peer re-init
+            });
+            
+            conn.on('error', () => showDisconnectScreen());
+        }
+
+        function startHeartbeat() {
+            if (heartbeatInterval) clearInterval(heartbeatInterval);
+            heartbeatInterval = setInterval(() => {
+                if(conn && conn.open) {
+                    conn.send({ type: 'HEARTBEAT' });
+                }
+            }, 2000); // Send every 2 seconds
+        }
+
+        function showDisconnectScreen() {
+            document.getElementById('screen-disconnect').classList.add('active');
+        }
+
+        function hideDisconnectScreen() {
+            document.getElementById('screen-disconnect').classList.remove('active');
+        }
 
         function handleData(data) {
             if (data.type === 'WHO_ARE_YOU') conn.send({ type: 'HELLO', uuid: myUUID });
@@ -150,8 +224,10 @@
                 initP5Lobby();
                 updateLobbyUI();
                 document.getElementById('global-menu-btn').classList.remove('hidden');
+                doVibrate(50); // Haptic confirm
             }
             else if (data.type === 'PING') conn.send({ type: 'PONG', ts: data.ts });
+            else if (data.type === 'VIBRATE') doVibrate(data.duration || 200);
             else if (data.type === 'STATE_CHANGE') {
                 if(data.player) player = { ...player, ...data.player };
                 currentContext = data.context || 'IDLE'; 
@@ -186,12 +262,27 @@
             document.getElementById('btn-style').innerText = `Style: ${player.variant === 'default' ? 'Boy' : 'Girl'}`;
         }
 
+        // --- INPUT HANDLING WITH HAPTICS ---
         window.sendUpdate = () => { player.name = document.getElementById('p-name').value; if(conn) conn.send({ type: 'UPDATE_PROFILE', payload: { name: player.name } }); };
         window.updateColor = (val) => { player.color = hslToHex(val, 70, 50); if(conn) conn.send({ type: 'UPDATE_PROFILE', payload: { color: player.color } }); };
-        window.changeAccessory = () => { let idx = accessories.indexOf(player.accessory); player.accessory = accessories[(idx + 1) % accessories.length]; updateLobbyUI(); if(conn) conn.send({ type: 'UPDATE_PROFILE', payload: { accessory: player.accessory } }); };
-        window.toggleVariant = () => { player.variant = player.variant === 'default' ? 'feminine' : 'default'; updateLobbyUI(); if(conn) conn.send({ type: 'UPDATE_PROFILE', payload: { variant: player.variant } }); }
+        
+        window.changeAccessory = () => { 
+            let idx = accessories.indexOf(player.accessory); 
+            player.accessory = accessories[(idx + 1) % accessories.length]; 
+            updateLobbyUI(); 
+            doVibrate(10);
+            if(conn) conn.send({ type: 'UPDATE_PROFILE', payload: { accessory: player.accessory } }); 
+        };
+        
+        window.toggleVariant = () => { 
+            player.variant = player.variant === 'default' ? 'feminine' : 'default'; 
+            updateLobbyUI(); 
+            doVibrate(10);
+            if(conn) conn.send({ type: 'UPDATE_PROFILE', payload: { variant: player.variant } }); 
+        }
 
         window.toggleMenu = () => {
+            doVibrate(15);
             const menu = document.getElementById('overlay-menu');
             const isHidden = menu.classList.contains('hidden');
             if (isHidden) {
@@ -210,12 +301,20 @@
             menu.classList.toggle('hidden');
         }
 
-        window.sendCmd = (action, payload = null) => { if(conn) conn.send({ type: 'COMMAND', action: action, payload: payload }); toggleMenu(); }
+        window.sendCmd = (action, payload = null) => { 
+            doVibrate(10);
+            if(conn) conn.send({ type: 'COMMAND', action: action, payload: payload }); 
+            toggleMenu(); 
+        }
+        
         window.confirmExit = () => { if(confirm("End game for everyone?")) window.sendCmd('EXIT'); }
         window.confirmPlayAgain = () => { if(confirm("Restart game?")) window.sendCmd('PLAY_AGAIN'); }
         window.startGameFromMenu = () => { const gameId = document.getElementById('game-list').value; if(gameId) window.sendCmd('SELECT_GAME', gameId); }
 
-        const sendInput = (action, payload=null) => { if(conn) conn.send({ type: 'INPUT', action: action, payload: payload }); };
+        const sendInput = (action, payload=null) => { 
+            if(action === 'PRESS') doVibrate(15);
+            if(conn) conn.send({ type: 'INPUT', action: action, payload: payload }); 
+        };
 
         const btn = document.getElementById('btn-big');
         const clickZone = document.getElementById('touch-click-zone');
@@ -227,9 +326,18 @@
             el.addEventListener('mouseup', () => { sendInput('RELEASE'); el.style.transform = "scale(1)"; });
         });
 
-        window.sendVec = (x, y, e) => { if(e) e.preventDefault(); sendInput('VECTOR', { x, y }); };
+        window.sendVec = (x, y, e) => { 
+            if(e) e.preventDefault(); 
+            doVibrate(10); // Light feedback on d-pad
+            sendInput('VECTOR', { x, y }); 
+        };
+        
         window.addEventListener('touchend', () => sendInput('VECTOR', {x:0, y:0}));
         window.addEventListener('mouseup', () => sendInput('VECTOR', {x:0, y:0}));
+
+        function doVibrate(ms) {
+            if (navigator.vibrate) navigator.vibrate(ms);
+        }
 
         function showScreen(id) { document.querySelectorAll('.screen').forEach(s => s.classList.remove('active')); document.getElementById(id).classList.add('active'); }
         function initP5Lobby() { if(p5Lobby) return; const sketch = (p) => { let sys; p.setup = () => { p.createCanvas(200, 200); sys = new AvatarSystem(p); }; p.draw = () => { p.clear(); p.translate(100, 100); sys.draw({ x:0, y:0, size:130, color: player.color, variant: player.variant, accessory: player.accessory, expression: 'happy' }); }; }; p5Lobby = new p5(sketch, 'lobby-avatar'); }
@@ -249,8 +357,14 @@
             const room = params.get('room');
             if(room) {
                 document.getElementById('room-code').value = room;
-                // Small delay to ensure PeerJS loaded
                 setTimeout(() => connect(), 500);
+            }
+        });
+        
+        // Handle visibility change to re-request wake lock if lost
+        document.addEventListener('visibilitychange', async () => {
+            if (wakeLock !== null && document.visibilityState === 'visible') {
+                requestWakeLock();
             }
         });
     </script>
