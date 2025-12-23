@@ -166,12 +166,24 @@ export default class UIManager {
             <div class="message-card">
                 <h1>Tournament Complete!</h1>
                 ${podiumHTML}
-                <button id="podium-btn" class="primary-btn">${buttonText}</button>
+                <div style="display:flex; flex-direction:column; gap:10px; align-items:center;">
+                    <button id="podium-btn" class="primary-btn">${buttonText}</button>
+                    <button id="podium-exit-btn" class="secondary-btn" style="background:rgba(0,0,0,0.1); color:#333; margin:0;">Back to Hub</button>
+                </div>
             </div>
         `;
 
         this.centerMessage.classList.add('visible');
         this._bindButton('podium-btn', onButtonClick);
+        
+        // NEW: Bind Exit Button
+        const exitBtn = document.getElementById('podium-exit-btn');
+        if(exitBtn) {
+            exitBtn.addEventListener('click', () => {
+                this.hideMessage();
+                window.dispatchEvent(new CustomEvent('game-exit'));
+            });
+        }
 
         setTimeout(() => {
             sorted.forEach((p, index) => {
