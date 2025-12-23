@@ -70,26 +70,19 @@ export default class TournamentManager {
         if (gameConfig.id === 'red-light') rules.winValue = 3; 
         if (gameConfig.id === 'code-breaker') rules.winValue = 1; 
 
-        // UPDATED: Use the standard Transition -> Tutorial -> Start flow
+        // UPDATED: Standardized Transition & Tutorial Flow
         this.ui.showTransition(() => {
-            // Set network state
-            let screenType = 'CONTROLLER';
-            if (gameConfig.id === 'avatar-match') screenType = 'TOUCHPAD';
-            // We need to access network manager to broadcast state, but we don't have direct access here.
-            // However, GameRunner mounting triggers 'game-state-change' event eventually. 
-            // Better to dispatch manually to be safe or ensure GameRunner does it.
-            // Since we don't have direct access to network here, we rely on the flow.
+            // NOTE: We rely on GameRunner/BaseGame to dispatch 'game-state-change'
+            // which Main.js picks up to notify NetworkManager.
             
-            // Mount Frozen
             this.runner.mount(
                 gameConfig.class,
                 'game-canvas-container',
                 'tournament',
                 (results) => this.handleGameComplete(results),
-                { ...rules, autoStart: false }
+                { ...rules, autoStart: false } // Mount Frozen
             );
 
-            // Show Tutorial
             this.ui.showTutorial(gameConfig, 3500, () => {
                 this.ui.hideTransition();
                 // UNFREEZE
@@ -147,11 +140,9 @@ export default class TournamentManager {
         this.runner.audioManager.setTrack('victory');
 
         this.ui.showPodium(finalResults, "Back to Hub", () => {
-            // UPDATED: Use Callback instead of reload
+            // FIXED: Use callback to prevent page reload/disconnect
             if (this.onExitCallback) {
                 this.onExitCallback();
-            } else {
-                location.reload(); 
             }
         });
     }
