@@ -115,6 +115,38 @@ function init() {
         returnToHub();
     });
 
+    // Handle "Play Again" Replay Logic from BaseGame
+    window.addEventListener('game-replay', () => {
+        // Run countdown, then start play
+        ui.runCountdown(() => {
+            if (runner.activeGame) runner.activeGame.beginGameplay();
+        });
+    });
+
+    // Handle "Tournament Start Game" event to trigger countdown
+    window.addEventListener('tournament-game-start', (e) => {
+        const gameConfig = e.detail;
+        currentMode = 'game';
+        currentGameState = 'PLAYING';
+        gameStage.classList.remove('hidden');
+        pauseDemos();
+        
+        currentScreenType = 'CONTROLLER'; 
+        if (gameConfig.id === 'avatar-match') {
+            currentScreenType = 'TOUCHPAD'; 
+        }
+        network.broadcastState(currentScreenType, 'PLAYING');
+
+        // Show Tutorial then Countdown
+        ui.showTutorial(gameConfig, 3500, () => {
+            ui.runCountdown(() => {
+                if (runner.activeGame) {
+                    runner.activeGame.beginGameplay();
+                }
+            });
+        });
+    });
+
     window.addEventListener('remote-command', (e) => {
         const cmd = e.detail; 
         if (cmd.action === 'EXIT') returnToHub();
@@ -122,12 +154,17 @@ function init() {
             if (currentMode === 'game' && runner.activeGame) {
                 ui.hideMessage(); 
                 runner.activeGame.startNewRound();
+                // We need to wait for INTRO logic then unfreeze
+                setTimeout(() => { if(runner.activeGame) runner.activeGame.beginGameplay(); }, 1500);
             }
         }
         else if (cmd.action === 'PLAY_AGAIN') {
             if (currentMode === 'game' && runner.activeGame) {
                 ui.hideMessage(); 
-                runner.activeGame.setup(); 
+                runner.activeGame.setup();
+                ui.runCountdown(() => {
+                    if (runner.activeGame) runner.activeGame.beginGameplay();
+                });
             }
         }
         else if (cmd.action === 'SELECT_GAME') {
@@ -263,10 +300,9 @@ function enterGameMode(gameConfig) {
 
         ui.showTutorial(gameConfig, 3500, () => {
             ui.hideTransition();
-            // START COUNTDOWN
             ui.runCountdown(() => {
                 if (runner.activeGame) {
-                    runner.activeGame.startNewRound();
+                    runner.activeGame.beginGameplay();
                 }
             });
         });
