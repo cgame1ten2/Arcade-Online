@@ -9,7 +9,6 @@ export default class UIManager {
 
         this._ensureElement('transition-curtain');
         this._ensureElement('tutorial-overlay');
-        this._ensureElement('countdown-overlay');
         
         if (!document.getElementById('confetti-canvas')) {
             const cvs = document.createElement('canvas');
@@ -19,7 +18,6 @@ export default class UIManager {
 
         this.transitionCurtain = document.getElementById('transition-curtain');
         this.tutorialOverlay = document.getElementById('tutorial-overlay');
-        this.countdownOverlay = document.getElementById('countdown-overlay');
         this.confettiCanvas = document.getElementById('confetti-canvas');
         this.confettiCtx = this.confettiCanvas.getContext('2d');
         this.confettiParticles = [];
@@ -48,25 +46,6 @@ export default class UIManager {
             el.id = id;
             document.body.appendChild(el);
         }
-    }
-
-    // --- COUNTDOWN ---
-    runCountdown(callback) {
-        this.countdownOverlay.innerHTML = '';
-        const sequence = ['3', '2', '1', 'GO!'];
-        let idx = 0;
-
-        const showNext = () => {
-            if (idx >= sequence.length) {
-                this.countdownOverlay.innerHTML = '';
-                if(callback) callback();
-                return;
-            }
-            this.countdownOverlay.innerHTML = `<div class="count-num anim">${sequence[idx]}</div>`;
-            idx++;
-            setTimeout(showNext, 1000);
-        };
-        showNext();
     }
 
     // --- CONFETTI ---
@@ -259,12 +238,10 @@ export default class UIManager {
         }, 50);
     }
 
-    // UPDATED: Accepts stats array with { oldPoints, newPoints } and optional maxScore
     showTournamentStandings(stats, players, title, subtitle, onNext, maxScoreOverride = null) {
         if (!this.centerMessage) return;
 
         const sortedStats = [...stats].sort((a, b) => b.newPoints - a.newPoints);
-        // Use override if provided, else use highest current score
         const maxPoints = maxScoreOverride || Math.max(1, sortedStats[0].newPoints);
 
         let rowsHTML = '<div class="standings-table">';
@@ -272,8 +249,6 @@ export default class UIManager {
             const p = players.find(pl => pl.id === stat.id);
             const isLeader = idx === 0;
             const canvasId = `stand-av-${idx}`;
-            
-            // Start at Old Percentage
             const startPercent = (stat.oldPoints / maxPoints) * 100;
 
             rowsHTML += `
@@ -304,15 +279,12 @@ export default class UIManager {
         this.centerMessage.classList.add('visible');
         this._bindButton('tourney-next-btn', onNext);
 
-        // TRIGGER ANIMATIONS
         setTimeout(() => {
             sortedStats.forEach((stat, idx) => {
-                // 1. Animate Bar to New Width
                 const bar = document.getElementById(`bar-${idx}`);
                 const endPercent = (stat.newPoints / maxPoints) * 100;
                 if(bar) bar.style.width = `${endPercent}%`;
 
-                // 2. Render Avatar
                 const p = players.find(pl => pl.id === stat.id);
                 const canvasId = `stand-av-${idx}`;
                 new p5((sketch) => {
