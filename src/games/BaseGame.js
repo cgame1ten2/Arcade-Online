@@ -24,7 +24,6 @@ export default class BaseGame {
             turnBased: false,
             turnBasedBackgroundColor: false,
             controllerType: rules.controllerType || 'ONE_BUTTON', 
-            autoStart: true, 
             ...rules
         };
 
@@ -70,7 +69,6 @@ export default class BaseGame {
         
         // Track if this is the very first boot up of the game instance
         this.isFirstBoot = true; 
-        this.hasStartedOnce = false;
     }
 
     setup() {
@@ -84,9 +82,6 @@ export default class BaseGame {
         this.state.round = 0;
         this.state.winner = null;
         this.state.phase = 'SETUP';
-        
-        // FIX: Do NOT reset isFirstBoot here. 
-        // If we are calling setup() again (Play Again), we want to skip tutorial logic.
 
         // --- HARD RESET PLAYERS ---
         this.players.forEach(p => {
@@ -106,9 +101,24 @@ export default class BaseGame {
         this.onSetup(); 
         this.updateUI(); 
 
-        // Always start a "Round" to initialize entities (cars, players, etc)
-        // preventing blank screens or crashes in onDraw
+        // Always Generate World Immediately (So it's visible behind tutorial/countdown)
         this.startNewRound();
+
+        // If Demo, start moving immediately. If Active, wait for 'beginGameplay()'
+        if (this.mode === 'demo') {
+            this.beginGameplay();
+        }
+    }
+
+    // NEW: Called by main.js after Countdown finishes
+    beginGameplay() {
+        if (this.isDestroyed) return;
+        this.state.phase = 'PLAYING';
+        this.timerLastTick = this.p.millis();
+        
+        if (this.mode !== 'demo') {
+            window.dispatchEvent(new CustomEvent('game-state-change', { detail: 'PLAYING' }));
+        }
     }
 
     draw() {
@@ -240,15 +250,13 @@ export default class BaseGame {
     
     runDemoAI() {}
 
+    // Initializes Round Data (Spawns cars, sets positions)
+    // Does NOT start the timer or input handling (stays in INTRO)
     startNewRound() {
         if (this.isDestroyed) return;
 
-        // If this is called, we consider the game "Started"
-        this.hasStartedOnce = true;
-
         this.state.phase = 'INTRO';
         
-        // Only increment round count if we are actually playing or replaying
         if (this.mode === 'active' || this.mode === 'tournament') {
             this.state.round++;
         }
@@ -283,37 +291,6 @@ export default class BaseGame {
         
         this.updateUI();
         this.onRoundStart();
-
-        if (this.mode !== 'demo') {
-            // LOGIC FIX:
-            // If AutoStart is TRUE, we go to PLAYING.
-            // If AutoStart is FALSE but we have played before (Replay), we go to PLAYING.
-            // If AutoStart is FALSE and isFirstBoot (Fresh game), we go to TUTORIAL (wait).
-            
-            const shouldPlay = this.config.autoStart || !this.isFirstBoot;
-
-            if (shouldPlay) {
-                window.dispatchEvent(new CustomEvent('game-state-change', { detail: 'PLAYING' }));
-                const delay = 800;
-                setTimeout(() => {
-                    if (!this.isDestroyed) {
-                        this.state.phase = 'PLAYING';
-                        this.timerLastTick = this.p.millis();
-                    }
-                }, delay);
-            } else {
-                this.state.phase = 'TUTORIAL';
-                this.isFirstBoot = false; // Next time we come here, we play.
-            }
-        } else {
-            // Demo mode always plays
-            setTimeout(() => {
-                if (!this.isDestroyed) {
-                    this.state.phase = 'PLAYING';
-                    this.timerLastTick = this.p.millis();
-                }
-            }, 100);
-        }
     }
 
     nextTurn() {
@@ -420,8 +397,13 @@ export default class BaseGame {
                 if (this.mode !== 'demo' && this.config.showRoundResultUI) {
                     const title = roundWinner ? `${roundWinner.name} Wins!` : "Draw";
                     this.ui.showMessage(title, "Next Round", "Next", () => this.startNewRound());
+                    // Auto-start next round logic also needs to trigger gameplay after delay
+                    setTimeout(() => { if (!this.isDestroyed && this.state.phase === 'INTRO') this.beginGameplay(); }, 2500);
                 } else {
-                    setTimeout(() => this.startNewRound(), 2000);
+                    setTimeout(() => {
+                        this.startNewRound();
+                        setTimeout(() => this.beginGameplay(), 500);
+                    }, 2000);
                 }
             }
         }, 500);
@@ -465,7 +447,13 @@ export default class BaseGame {
         if (this.mode === 'tournament' && this.onGameComplete) {
             this.onGameComplete(this.players); 
         } else if (this.mode === 'active') {
-            this.ui.showPodium(this.players, "Play Again", () => this.setup());
+            this.ui.showPodium(this.players, "Play Again", () => {
+                // REPLAY LOGIC:
+                // 1. Setup (Resets everything, puts game in INTRO)
+                this.setup();
+                // 2. Dispatch event so Main can run Countdown
+                window.dispatchEvent(new CustomEvent('game-replay'));
+            });
         } else {
             this.setup();
         }
