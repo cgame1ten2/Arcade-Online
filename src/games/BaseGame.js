@@ -70,6 +70,7 @@ export default class BaseGame {
         
         // Track if this is the very first boot up of the game instance
         this.isFirstBoot = true; 
+        this.hasStartedOnce = false;
     }
 
     setup() {
@@ -84,8 +85,8 @@ export default class BaseGame {
         this.state.winner = null;
         this.state.phase = 'SETUP';
         
-        // FIX: Do NOT reset isFirstBoot to true here. 
-        // If we are resetting, we are past the tutorial phase.
+        // FIX: Do NOT reset isFirstBoot here. 
+        // If we are calling setup() again (Play Again), we want to skip tutorial logic.
 
         // --- HARD RESET PLAYERS ---
         this.players.forEach(p => {
@@ -208,9 +209,6 @@ export default class BaseGame {
     }
 
     handleInput(playerId, type, payload) {
-        // CRITICAL FIX: If we are stuck in 'TUTORIAL' phase, inputs were ignored.
-        // The fix in startNewRound ensures we transition to PLAYING on restart,
-        // so this check will now pass correctly.
         if (this.isDestroyed || this.state.phase !== 'PLAYING') return;
 
         const p = this.players.find(pl => pl.id === playerId);
@@ -245,12 +243,13 @@ export default class BaseGame {
     startNewRound() {
         if (this.isDestroyed) return;
 
+        // If this is called, we consider the game "Started"
+        this.hasStartedOnce = true;
+
         this.state.phase = 'INTRO';
         
-        // Only increment round count if we are actually playing, not just initializing the background
-        if (!this.config.autoStart && this.isFirstBoot) {
-            // Don't increment round
-        } else {
+        // Only increment round count if we are actually playing or replaying
+        if (this.mode === 'active' || this.mode === 'tournament') {
             this.state.round++;
         }
         
@@ -286,27 +285,28 @@ export default class BaseGame {
         this.onRoundStart();
 
         if (this.mode !== 'demo') {
-            // Logic Check:
-            // 1. If autoStart is TRUE: Go to PLAYING.
-            // 2. If autoStart is FALSE:
-            //    a. If isFirstBoot is TRUE: Go to TUTORIAL (Wait).
-            //    b. If isFirstBoot is FALSE (Restart): Go to PLAYING.
+            // LOGIC FIX:
+            // If AutoStart is TRUE, we go to PLAYING.
+            // If AutoStart is FALSE but we have played before (Replay), we go to PLAYING.
+            // If AutoStart is FALSE and isFirstBoot (Fresh game), we go to TUTORIAL (wait).
             
-            if (!this.config.autoStart && this.isFirstBoot) {
-                this.state.phase = 'TUTORIAL';
-                this.isFirstBoot = false; 
-            } else {
+            const shouldPlay = this.config.autoStart || !this.isFirstBoot;
+
+            if (shouldPlay) {
                 window.dispatchEvent(new CustomEvent('game-state-change', { detail: 'PLAYING' }));
-                const delay = this.mode === 'demo' ? 100 : 800;
+                const delay = 800;
                 setTimeout(() => {
                     if (!this.isDestroyed) {
                         this.state.phase = 'PLAYING';
                         this.timerLastTick = this.p.millis();
                     }
                 }, delay);
+            } else {
+                this.state.phase = 'TUTORIAL';
+                this.isFirstBoot = false; // Next time we come here, we play.
             }
         } else {
-            // Demo mode always starts
+            // Demo mode always plays
             setTimeout(() => {
                 if (!this.isDestroyed) {
                     this.state.phase = 'PLAYING';
