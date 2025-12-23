@@ -70,11 +70,17 @@ export default class TournamentManager {
         if (gameConfig.id === 'red-light') rules.winValue = 3; 
         if (gameConfig.id === 'code-breaker') rules.winValue = 1; 
 
-        // UPDATED: Standardized Transition & Tutorial Flow
+        // UPDATED: Determine Controller type
+        let screenType = 'CONTROLLER';
+        if (gameConfig.id === 'avatar-match') {
+            screenType = 'TOUCHPAD';
+        }
+        
+        // Notify main.js to update network state
+        window.dispatchEvent(new CustomEvent('update-screen-type', { detail: screenType }));
+
+        // Standardized Transition & Tutorial Flow
         this.ui.showTransition(() => {
-            // NOTE: We rely on GameRunner/BaseGame to dispatch 'game-state-change'
-            // which Main.js picks up to notify NetworkManager.
-            
             this.runner.mount(
                 gameConfig.class,
                 'game-canvas-container',
