@@ -249,6 +249,7 @@ export default class UIManager {
             const p = players.find(pl => pl.id === stat.id);
             const isLeader = idx === 0;
             const canvasId = `stand-av-${idx}`;
+            
             const startPercent = (stat.oldPoints / maxPoints) * 100;
 
             rowsHTML += `
