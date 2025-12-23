@@ -109,12 +109,6 @@ function init() {
     window.addEventListener('player-update', () => {
         if(network.roomId && hostBtnRef) updateHostButton(network.roomId);
         if (!setupOverlay.classList.contains('hidden')) renderVisualLobby();
-        
-        // --- NEW: Sync Game List to Late Joiners ---
-        if (currentMode === 'hub') {
-            const gameNames = GAME_LIST.map(g => ({ id: g.id, title: g.title }));
-            network.broadcastState('LOBBY', 'IDLE', { gameList: gameNames });
-        }
     });
 
     window.addEventListener('remote-command', (e) => {
@@ -194,7 +188,6 @@ function renderHub() {
     GAME_LIST.forEach(game => createGameCard(game));
     audio.setTrack('lobby');
     
-    // --- SYNC GAME LIST ON HUB LOAD ---
     const gameNames = GAME_LIST.map(g => ({ id: g.id, title: g.title }));
     network.broadcastState('LOBBY', 'IDLE', { gameList: gameNames });
 
@@ -240,8 +233,11 @@ function createGameCard(gameConfig) {
     demoInstances.push(p5inst);
 }
 
+// --- UPDATED: Centralized Transition & Tutorial Sequence ---
 function enterGameMode(gameConfig) {
     if (!gameConfig) {
+        // Fallback for Tournament Mode (null config passed initially)
+        // Tournament manager handles its own flow, so we just set state.
         currentMode = 'game';
         currentGameState = 'PLAYING';
         gameStage.classList.remove('hidden');
@@ -249,7 +245,9 @@ function enterGameMode(gameConfig) {
         return;
     }
 
+    // 1. Trigger Transition Fade
     ui.showTransition(() => {
+        // 2. Setup State
         currentMode = 'game';
         currentGameState = 'PLAYING';
         audio.setTrack('game');
@@ -262,9 +260,12 @@ function enterGameMode(gameConfig) {
         }
         network.broadcastState(currentScreenType, 'PLAYING');
 
+        // 3. Mount Game (Frozen via autoStart: false)
         runner.mount(gameConfig.class, 'game-canvas-container', 'active', null, { autoStart: false });
 
+        // 4. Show Tutorial Card
         ui.showTutorial(gameConfig, 3500, () => {
+            // 5. Hide Transition & Start Game Logic
             ui.hideTransition();
             if (runner.activeGame) {
                 runner.activeGame.startNewRound();
@@ -305,6 +306,8 @@ function showTournamentSetup() {
     window.startTourney = (rounds) => {
         ui.hideMessage();
         audio.play('click');
+        
+        // Manual transition for tournament start
         ui.showTransition(() => {
             enterGameMode(null); 
             tournament.startTournament(rounds);
@@ -362,6 +365,7 @@ function renderVisualLobby() {
 function bindLobbyInputs() {
     const accessories = AvatarSystem.ACCESSORIES;
 
+    // --- FIX: GET PLAYER BY INDEX THEN USE ID ---
     document.querySelectorAll('.name-input').forEach(el => {
         el.addEventListener('input', (e) => {
             if(e.target.disabled) return;
