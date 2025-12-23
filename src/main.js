@@ -15,8 +15,10 @@ const inputs = new InputManager(players);
 const ui = new UIManager();
 const audio = new AudioManager();
 const runner = new GameRunner(players, inputs, ui, audio);
-const tournament = new TournamentManager(runner, ui, players);
 const network = new NetworkManager(players, inputs);
+
+// FIX: Pass returnToHub so tournament doesn't refresh page on exit
+const tournament = new TournamentManager(runner, ui, players, () => returnToHub());
 
 inputs.setNetworkManager(network);
 
@@ -127,10 +129,7 @@ function init() {
         else if (cmd.action === 'PLAY_AGAIN') {
             if (currentMode === 'game' && runner.activeGame) {
                 ui.hideMessage(); 
-                // Fix: Trigger countdown via Setup in BaseGame logic, or manually here?
-                // The BaseGame.finishGame handles the local logic now.
-                // For Remote command, we need to replicate the 'Play Again' flow.
-                ui.runCountdown(() => runner.activeGame.setup());
+                runner.activeGame.setup(); 
             }
         }
         else if (cmd.action === 'SELECT_GAME') {
@@ -266,12 +265,10 @@ function enterGameMode(gameConfig) {
 
         ui.showTutorial(gameConfig, 3500, () => {
             ui.hideTransition();
-            ui.runCountdown(() => {
-                if (runner.activeGame) {
-                    // FIXED: Call beginGameplay to UNFREEZE instead of re-rolling level
-                    runner.activeGame.beginGameplay();
-                }
-            });
+            // REMOVED 3-2-1 COUNTDOWN, JUST START
+            if (runner.activeGame) {
+                runner.activeGame.beginGameplay();
+            }
         });
     });
 }
