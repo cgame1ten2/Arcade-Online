@@ -49,14 +49,6 @@ export default class TournamentManager {
 
         this.runner.audioManager.setTrack('lobby');
 
-        // Pass 'null' for maxScore here? Actually we can pass roundsTotal*3
-        // But for "Next Round" screen, animation isn't critical, static is fine.
-        // We'll just reuse the same UI function but maybe without animation params if not needed.
-        
-        // Wait, showTournamentStandings is primarily for *results*.
-        // For "Next Round", we might want to show current standings (no animation).
-        // Let's create a display structure where old == new.
-        
         const displayData = this.standings.map(s => ({
             id: s.id,
             oldPoints: s.points,
@@ -70,28 +62,40 @@ export default class TournamentManager {
     }
 
     launchGame(gameConfig) {
-        const rules = {
-            winValue: 3, 
-            livesPerRound: 1
-        };
+        // FIX: Match standard game entry flow (Transition -> Tutorial -> Start)
+        this.ui.showTransition(() => {
+            const rules = {
+                winValue: 3, 
+                livesPerRound: 1,
+                autoStart: false // Pause for tutorial
+            };
 
-        if (gameConfig.id === 'red-light') rules.winValue = 3; 
-        if (gameConfig.id === 'code-breaker') rules.winValue = 1; 
+            if (gameConfig.id === 'red-light') rules.winValue = 3; 
+            if (gameConfig.id === 'code-breaker') rules.winValue = 1; 
 
-        this.runner.mount(
-            gameConfig.class,
-            'game-canvas-container',
-            'tournament',
-            (results) => this.handleGameComplete(results),
-            rules
-        );
+            // Mount game in frozen state
+            this.runner.mount(
+                gameConfig.class,
+                'game-canvas-container',
+                'tournament',
+                (results) => this.handleGameComplete(results),
+                rules
+            );
+
+            // Show Tutorial
+            this.ui.showTutorial(gameConfig, 3500, () => {
+                this.ui.hideTransition();
+                // Start Game
+                if(this.runner.activeGame) {
+                    this.runner.activeGame.beginGameplay();
+                }
+            });
+        });
     }
 
     handleGameComplete(gameResults) {
-        // Calculate deltas
         const sorted = [...gameResults].sort((a, b) => b.score - a.score);
         
-        // Create a map of ID -> Points Added
         const pointsAdded = {};
         sorted.forEach((p, index) => {
             let pts = 0;
@@ -101,11 +105,10 @@ export default class TournamentManager {
             pointsAdded[p.id] = pts;
         });
 
-        // Prepare Data for UI (Old -> New)
         const displayData = this.standings.map(s => {
             const added = pointsAdded[s.id] || 0;
             const old = s.points;
-            s.points += added; // Update internal state
+            s.points += added; 
             return {
                 id: s.id,
                 oldPoints: old,
@@ -115,7 +118,6 @@ export default class TournamentManager {
 
         this.currentRoundIdx++;
 
-        // Show Results Screen with Animation
         const title = `Round ${this.currentRoundIdx} Results`;
         let subtitle = (this.currentRoundIdx >= this.roundsTotal) ? "Final Standings!" : "Next Round Coming Up...";
 
