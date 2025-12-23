@@ -7,22 +7,26 @@
     <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/p5@1.9.0/lib/p5.min.js"></script>
     <style>
+        /* RESET & BOX SIZING FIX */
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        
         body { margin: 0; padding: 0; background: #2c3e50; font-family: 'Segoe UI', Roboto, sans-serif; overflow: hidden; touch-action: none; user-select: none; color: #333; height: 100vh; width: 100vw; }
         .screen { display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; flex-direction: column; align-items: center; justify-content: center; background: #2c3e50; z-index: 10; }
         .active { display: flex !important; }
-        .menu-btn { position: fixed; top: 15px; right: 15px; background: rgba(255,255,255,0.2); border: 2px solid rgba(255,255,255,0.3); color: white; font-size: 24px; width: 44px; height: 44px; border-radius: 50%; cursor: pointer; z-index: 999; display: flex; align-items: center; justify-content: center; }
+        
+        /* MENU BUTTON SVG */
+        .menu-btn { position: fixed; top: 15px; right: 15px; background: rgba(255,255,255,0.2); border: 2px solid rgba(255,255,255,0.3); color: white; width: 44px; height: 44px; border-radius: 50%; cursor: pointer; z-index: 999; display: flex; align-items: center; justify-content: center; padding: 10px; }
+        .menu-btn svg { width: 100%; height: 100%; fill: white; }
         
         #screen-login { background: #2c3e50; color: white; }
         input.code-input { font-size: 30px; padding: 15px; text-align: center; text-transform: uppercase; border-radius: 12px; border: none; background: rgba(255,255,255,0.1); color: white; font-weight: bold; width: 220px; display: block; margin-bottom: 20px; }
-        button.action-btn { font-size: 20px; padding: 15px 30px; background: #2ecc71; border: none; color: white; border-radius: 12px; font-weight: bold; width: 220px; }
+        button.action-btn { font-size: 20px; padding: 15px 30px; background: #2ecc71; border: none; color: white; border-radius: 12px; font-weight: bold; width: 220px; cursor: pointer; }
         
         #screen-lobby { background: #2c3e50; }
         .player-card { background: white; border-radius: 16px; padding: 20px; width: 90%; max-width: 350px; display: flex; flex-direction: column; gap: 15px; color: #333; }
-        .setup-preview { width: 100%; height: 200px; background: #eee; border-radius: 12px; display: flex; justify-content: center; align-items: center; }
-        
-        /* UPDATED: Better sizing for input */
-        .name-input { width: 95%; margin: 0 auto; display: block; padding: 10px; font-size: 1.2rem; text-align: center; border: 1px solid #ccc; border-radius: 8px; box-sizing: border-box; }
-        
+        /* Adjusted height/padding for clipping */
+        .setup-preview { width: 100%; height: 180px; background: #eee; border-radius: 12px; display: flex; justify-content: center; align-items: center; overflow: hidden; }
+        .name-input { width: 100%; padding: 10px; font-size: 1.2rem; text-align: center; border: 1px solid #ccc; border-radius: 8px; }
         .hue-slider { -webkit-appearance: none; appearance: none; width: 100%; height: 12px; border-radius: 6px; background: linear-gradient(to right, #ff0000, #ffff00, #00ff00, #00ffff, #0000ff, #ff00ff, #ff0000); outline: none; margin: 10px 0; }
         .hue-slider::-webkit-slider-thumb { -webkit-appearance: none; width: 28px; height: 28px; background: white; border: 3px solid #333; border-radius: 50%; box-shadow: 0 2px 5px rgba(0,0,0,0.3); }
         .opts-row { display: flex; gap: 10px; }
@@ -36,9 +40,12 @@
         #touch-click-zone { flex-basis: 30%; width: 100%; background: #27ae60; border-bottom: 8px solid rgba(0,0,0,0.2); display: flex; align-items: center; justify-content: center; flex-direction: column; box-shadow: inset 0 -10px 20px rgba(0,0,0,0.1); position: relative; overflow: hidden; }
         #touch-click-zone:active { filter: brightness(0.9); transform: translateY(2px); }
         #touch-move-zone { flex-basis: 70%; width: 100%; background: #2c3e50; display: flex; align-items: center; justify-content: center; }
+        
         .dpad-grid { display: grid; grid-template-columns: repeat(3, 85px); grid-template-rows: repeat(3, 85px); gap: 8px; transform: scale(0.9); }
         .dpad-btn { background: #ecf0f1; border-radius: 12px; border: 2px solid #bdc3c7; display: flex; align-items: center; justify-content: center; font-size: 24px; color: #2c3e50; font-weight: bold; box-shadow: 0 4px 0 #95a5a6; transition: transform 0.05s, box-shadow 0.05s; }
         .dpad-btn:active { transform: translateY(4px); box-shadow: 0 0 0 #95a5a6; background: #bdc3c7; }
+        /* SVG Icons for D-Pad */
+        .dpad-btn svg { width: 40px; height: 40px; fill: #2c3e50; }
         .dpad-center { display: flex; align-items: center; justify-content: center; color: rgba(255,255,255,0.2); font-weight: bold; font-size: 0.8rem; text-align: center; }
 
         #overlay-menu { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); z-index: 2000; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 15px; }
@@ -58,7 +65,10 @@
     </style>
 </head>
 <body>
-    <button id="global-menu-btn" class="menu-btn hidden" onclick="toggleMenu()">⚙️</button>
+    <button id="global-menu-btn" class="menu-btn hidden" onclick="toggleMenu()">
+        <!-- GEAR ICON -->
+        <svg viewBox="0 0 24 24"><path d="M19.14,12.94c0.04-0.3,0.06-0.61,0.06-0.94c0-0.32-0.02-0.64-0.07-0.94l2.03-1.58c0.18-0.14,0.23-0.41,0.12-0.61 l-1.92-3.32c-0.12-0.22-0.37-0.29-0.59-0.22l-2.39,0.96c-0.5-0.38-1.03-0.7-1.62-0.94L14.4,2.81c-0.04-0.24-0.24-0.41-0.48-0.41 h-3.84c-0.24,0-0.43,0.17-0.47,0.41L9.25,5.35C8.66,5.59,8.12,5.92,7.63,6.29L5.24,5.33c-0.22-0.08-0.47,0-0.59,0.22L2.74,8.87 C2.62,9.08,2.66,9.34,2.86,9.48l2.03,1.58C4.84,11.36,4.8,11.69,4.8,12s0.02,0.64,0.07,0.94l-2.03,1.58 c-0.18,0.14-0.23,0.41-0.12,0.61l1.92,3.32c0.12,0.22,0.37,0.29,0.59,0.22l2.39-0.96c0.5,0.38,1.03,0.7,1.62,0.94l0.36,2.54 c0.05,0.24,0.24,0.41,0.48,0.41h3.84c0.24,0,0.44-0.17,0.47-0.41l0.36-2.54c0.59-0.24,1.13-0.56,1.62-0.94l2.39,0.96 c0.22,0.08,0.47,0,0.59-0.22l1.92-3.32c0.12-0.22,0.07-0.47-0.12-0.61L19.14,12.94z M12,15.6c-1.98,0-3.6-1.62-3.6-3.6 s1.62-3.6,3.6-3.6s3.6,1.62,3.6,3.6S13.98,15.6,12,15.6z"/></svg>
+    </button>
 
     <!-- LOGIN -->
     <div id="screen-login" class="screen active">
@@ -68,17 +78,12 @@
         <p id="status" style="margin-top: 20px; color: #f1c40f; opacity: 0;">Connecting...</p>
     </div>
 
-    <!-- RECONNECTING -->
+    <!-- RECONNECTING / DISCONNECT -->
     <div id="screen-disconnect" class="screen">
-        <div id="disconnect-icon" style="font-size: 60px; margin-bottom: 20px;">🔌</div>
-        <h2 id="disconnect-title">Disconnected</h2>
-        <p id="disconnect-msg">Connection lost. Trying to reconnect...</p>
-        
-        <!-- Reconnect logic auto-runs, but we offer manual reload -->
-        <button class="action-btn" style="margin-top:40px; background:#e74c3c" onclick="location.reload()">Reload Page</button>
-        
-        <!-- UPDATED: Scan New Code button clears params -->
-        <button class="action-btn" style="margin-top:15px; background:#95a5a6" onclick="resetAndScan()">Scan New Code</button>
+        <div id="disc-spinner" class="spinner"></div>
+        <h2 id="disc-title">Connecting...</h2>
+        <p id="disc-msg">Establishing connection</p>
+        <button id="btn-scan-again" class="action-btn" style="margin-top:30px; background:#e74c3c" onclick="scanAgain()">Scan New Code</button>
     </div>
 
     <!-- LOBBY -->
@@ -111,15 +116,34 @@
         </div>
         <div id="touch-move-zone">
             <div class="dpad-grid">
-                <div class="dpad-btn" onmousedown="sendVec(-0.7, -0.7)" ontouchstart="sendVec(-0.7, -0.7, event)">↖</div>
-                <div class="dpad-btn" onmousedown="sendVec(0, -1)" ontouchstart="sendVec(0, -1, event)">▲</div>
-                <div class="dpad-btn" onmousedown="sendVec(0.7, -0.7)" ontouchstart="sendVec(0.7, -0.7, event)">↗</div>
-                <div class="dpad-btn" onmousedown="sendVec(-1, 0)" ontouchstart="sendVec(-1, 0, event)">◀</div>
+                <!-- SVG ICONS FOR ARROWS -->
+                <div class="dpad-btn" onmousedown="sendVec(-0.7, -0.7)" ontouchstart="sendVec(-0.7, -0.7, event)">
+                    <svg viewBox="0 0 24 24"><path d="M6,6L6,18L18,6Z" transform="rotate(-45 12 12)"/></svg>
+                </div>
+                <div class="dpad-btn" onmousedown="sendVec(0, -1)" ontouchstart="sendVec(0, -1, event)">
+                    <svg viewBox="0 0 24 24"><path d="M7.41,15.41L12,10.83L16.59,15.41L18,14L12,8L6,14L7.41,15.41Z"/></svg>
+                </div>
+                <div class="dpad-btn" onmousedown="sendVec(0.7, -0.7)" ontouchstart="sendVec(0.7, -0.7, event)">
+                    <svg viewBox="0 0 24 24"><path d="M6,6L6,18L18,6Z" transform="rotate(45 12 12)"/></svg>
+                </div>
+                
+                <div class="dpad-btn" onmousedown="sendVec(-1, 0)" ontouchstart="sendVec(-1, 0, event)">
+                    <svg viewBox="0 0 24 24"><path d="M15.41,16.59L10.83,12L15.41,7.41L14,6L8,12L14,18L15.41,16.59Z"/></svg>
+                </div>
                 <div class="dpad-center">HOLD<br>TO<br>MOVE</div>
-                <div class="dpad-btn" onmousedown="sendVec(1, 0)" ontouchstart="sendVec(1, 0, event)">▶</div>
-                <div class="dpad-btn" onmousedown="sendVec(-0.7, 0.7)" ontouchstart="sendVec(-0.7, 0.7, event)">↙</div>
-                <div class="dpad-btn" onmousedown="sendVec(0, 1)" ontouchstart="sendVec(0, 1, event)">▼</div>
-                <div class="dpad-btn" onmousedown="sendVec(0.7, 0.7)" ontouchstart="sendVec(0.7, 0.7, event)">↘</div>
+                <div class="dpad-btn" onmousedown="sendVec(1, 0)" ontouchstart="sendVec(1, 0, event)">
+                    <svg viewBox="0 0 24 24"><path d="M8.59,16.59L13.17,12L8.59,7.41L10,6L16,12L10,18L8.59,16.59Z"/></svg>
+                </div>
+
+                <div class="dpad-btn" onmousedown="sendVec(-0.7, 0.7)" ontouchstart="sendVec(-0.7, 0.7, event)">
+                    <svg viewBox="0 0 24 24"><path d="M6,6L6,18L18,6Z" transform="rotate(-135 12 12)"/></svg>
+                </div>
+                <div class="dpad-btn" onmousedown="sendVec(0, 1)" ontouchstart="sendVec(0, 1, event)">
+                    <svg viewBox="0 0 24 24"><path d="M7.41,8.59L12,13.17L16.59,8.59L18,10L12,16L6,10L7.41,8.59Z"/></svg>
+                </div>
+                <div class="dpad-btn" onmousedown="sendVec(0.7, 0.7)" ontouchstart="sendVec(0.7, 0.7, event)">
+                    <svg viewBox="0 0 24 24"><path d="M6,6L6,18L18,6Z" transform="rotate(135 12 12)"/></svg>
+                </div>
             </div>
         </div>
     </div>
@@ -127,7 +151,7 @@
     <!-- MENU OVERLAY -->
     <div id="overlay-menu" class="hidden">
         <button class="close-menu-btn" onclick="toggleMenu()">×</button>
-        <div class="menu-header">GAME MENU</div>
+        <div class="menu-header" style="color:white; font-size:2rem; font-weight:bold; margin-bottom:20px;">GAME MENU</div>
         <div id="game-selector-container" class="hidden" style="width:100%; display:flex; flex-direction:column; align-items:center;">
             <select id="game-list" class="game-select"><option value="" disabled selected>Select Game...</option></select>
             <button class="menu-option primary" onclick="startGameFromMenu()">Start Game</button>
@@ -147,24 +171,21 @@
         let currentContext = 'IDLE'; 
         let heartbeatInterval = null;
         let wakeLock = null;
-        let disconnectReason = null; // Track why we disconnected
         const accessories = AvatarSystem.ACCESSORIES;
         
         let myUUID = localStorage.getItem('wa_uuid');
         if (!myUUID) { myUUID = 'user-' + Math.random().toString(36).substr(2, 9); localStorage.setItem('wa_uuid', myUUID); }
 
-        // --- WAKE LOCK ---
         async function requestWakeLock() {
             try {
                 if ('wakeLock' in navigator) {
                     wakeLock = await navigator.wakeLock.request('screen');
-                    console.log('Wake Lock active');
                 }
             } catch (err) { console.log('Wake Lock Error:', err); }
         }
 
-        window.resetAndScan = () => {
-            // Clear the query params so we don't auto-join on reload
+        window.scanAgain = () => {
+            // Clear URL params and reload to go back to login (allows manual entry or external scan)
             window.location.href = window.location.pathname;
         };
 
@@ -173,20 +194,20 @@
             if(code.length < 4) return;
             
             document.getElementById('status').style.opacity = 1;
-            requestWakeLock(); // Trigger on interaction
+            requestWakeLock();
             
+            if(peer) peer.destroy();
             peer = new Peer();
+            
             peer.on('open', (id) => {
                 connectToHost(code);
             });
             peer.on('error', (err) => {
                 console.error(err);
-                disconnectReason = 'ERROR';
-                showDisconnectScreen();
+                showDisconnectScreen(true);
             });
             peer.on('disconnected', () => {
-                // PeerJS specific: reconnect to signalling server
-                peer.reconnect();
+                showDisconnectScreen(true);
             });
         };
 
@@ -203,13 +224,11 @@
             conn.on('data', handleData);
             
             conn.on('close', () => {
-                showDisconnectScreen();
+                // Connection closed by host (refresh or closed tab)
+                showDisconnectScreen(true);
             });
             
-            conn.on('error', () => {
-                disconnectReason = 'ERROR';
-                showDisconnectScreen();
-            });
+            conn.on('error', () => showDisconnectScreen(true));
         }
 
         function startHeartbeat() {
@@ -221,34 +240,30 @@
             }, 2000); 
         }
 
-        function showDisconnectScreen() {
-            const el = document.getElementById('screen-disconnect');
-            const title = document.getElementById('disconnect-title');
-            const msg = document.getElementById('disconnect-msg');
-            const icon = document.getElementById('disconnect-icon');
+        function showDisconnectScreen(fatal = false) {
+            const screen = document.getElementById('screen-disconnect');
+            const title = document.getElementById('disc-title');
+            const msg = document.getElementById('disc-msg');
+            const spinner = document.getElementById('disc-spinner');
+            const btn = document.getElementById('btn-scan-again');
 
-            el.classList.add('active');
-
-            if (disconnectReason === 'HOST_CLOSED') {
-                title.innerText = "Session Ended";
-                msg.innerText = "The host closed the game window.";
-                icon.innerText = "🛑";
-                // Hide spinner logic if you had one, or replace with stop icon
-            } else if (disconnectReason === 'KICKED') {
-                title.innerText = "Removed";
-                msg.innerText = "You were removed from the game.";
-                icon.innerText = "👢";
+            screen.classList.add('active');
+            
+            if(fatal) {
+                title.innerText = "Host Disconnected";
+                msg.innerText = "The game session has ended.";
+                spinner.style.display = 'none';
+                btn.classList.remove('hidden');
             } else {
-                // Default network disconnect
-                title.innerText = "Disconnected";
-                msg.innerText = "Connection lost. Trying to reconnect...";
-                icon.innerText = "🔌";
+                title.innerText = "Reconnecting...";
+                msg.innerText = "Trying to reach the host";
+                spinner.style.display = 'block';
+                btn.classList.add('hidden');
             }
         }
 
         function hideDisconnectScreen() {
             document.getElementById('screen-disconnect').classList.remove('active');
-            disconnectReason = null;
         }
 
         function handleData(data) {
@@ -263,29 +278,21 @@
             }
             else if (data.type === 'PING') conn.send({ type: 'PONG', ts: data.ts });
             else if (data.type === 'VIBRATE') doVibrate(data.duration || 200);
-            
-            // --- DETECT HOST CLOSING ---
-            else if (data.type === 'HOST_CLOSED') {
-                disconnectReason = 'HOST_CLOSED';
-                conn.close(); // Trigger the close handler logic
-            }
-            else if (data.type === 'KICK') {
-                disconnectReason = 'KICKED';
-                conn.close();
-            }
-            
             else if (data.type === 'STATE_CHANGE') {
                 if(data.player) player = { ...player, ...data.player };
                 currentContext = data.context || 'IDLE'; 
                 
+                // POPULATE GAME LIST
                 if(data.gameList) {
                     const sel = document.getElementById('game-list');
+                    const currentVal = sel.value;
                     sel.innerHTML = '<option value="" disabled selected>Select Game...</option>';
                     data.gameList.forEach(g => {
                         const opt = document.createElement('option');
                         opt.value = g.id; opt.innerText = g.title;
                         sel.appendChild(opt);
                     });
+                    if(currentVal) sel.value = currentVal;
                 }
 
                 if (data.state === 'LOBBY') showScreen('screen-lobby');
@@ -308,7 +315,6 @@
             document.getElementById('btn-style').innerText = `Style: ${player.variant === 'default' ? 'Boy' : 'Girl'}`;
         }
 
-        // --- INPUT HANDLING WITH HAPTICS ---
         window.sendUpdate = () => { player.name = document.getElementById('p-name').value; if(conn) conn.send({ type: 'UPDATE_PROFILE', payload: { name: player.name } }); };
         window.updateColor = (val) => { player.color = hslToHex(val, 70, 50); if(conn) conn.send({ type: 'UPDATE_PROFILE', payload: { color: player.color } }); };
         
@@ -387,7 +393,7 @@
 
         function showScreen(id) { document.querySelectorAll('.screen').forEach(s => s.classList.remove('active')); document.getElementById(id).classList.add('active'); }
         
-        // --- UPDATED INIT P5: FIX CLIPPING ---
+        // --- UPDATED AVATAR SIZE FOR MOBILE ---
         function initP5Lobby() { 
             if(p5Lobby) return; 
             const sketch = (p) => { 
@@ -395,15 +401,14 @@
                 p.setup = () => { p.createCanvas(200, 200); sys = new AvatarSystem(p); }; 
                 p.draw = () => { 
                     p.clear(); 
-                    // Lowered Y to 120 (from 100) to fit Bunny Ears
-                    // Reduced size to 110 (from 130) to fit Width
-                    p.translate(100, 120); 
-                    sys.draw({ x:0, y:0, size:110, color: player.color, variant: player.variant, accessory: player.accessory, expression: 'happy' }); 
+                    p.translate(100, 100); 
+                    // Reduced size from 130 to 110, Y offset from 0 to 15
+                    sys.draw({ x:0, y:15, size:110, color: player.color, variant: player.variant, accessory: player.accessory, expression: 'happy' }); 
                 }; 
             }; 
             p5Lobby = new p5(sketch, 'lobby-avatar'); 
         }
-
+        
         function initP5Controller() { if(p5Btn) p5Btn.remove(); document.getElementById('btn-avatar-target').innerHTML = ''; const sketch = (p) => { let sys; p.setup = () => { p.createCanvas(150, 150); sys = new AvatarSystem(p); }; p.draw = () => { p.clear(); p.translate(75, 75); sys.draw({ x:0, y:0, size:100, color: player.color, variant: player.variant, accessory: player.accessory, expression: 'angry' }); }; }; p5Btn = new p5(sketch, 'btn-avatar-target'); }
         function initP5Touchpad() { if(p5Touch) p5Touch.remove(); document.getElementById('touch-avatar-target').innerHTML = ''; const sketch = (p) => { let sys; p.setup = () => { p.createCanvas(100, 100); sys = new AvatarSystem(p); }; p.draw = () => { p.clear(); p.translate(50, 50); sys.draw({ x:0, y:0, size:80, color: player.color, variant: player.variant, accessory: player.accessory, expression: 'idle' }); }; }; p5Touch = new p5(sketch, 'touch-avatar-target'); }
         
@@ -414,7 +419,6 @@
         
         function hslToHex(h,s,l) { l/=100; const a=s*Math.min(l,1-l)/100; const f=n=>{const k=(n+h/30)%12; const c=l-a*Math.max(Math.min(k-3,9-k,1),-1); return Math.round(255*c).toString(16).padStart(2,'0');}; return `#${f(0)}${f(8)}${f(4)}`; }
     
-        // --- QR CODE AUTO-JOIN ---
         window.addEventListener('load', () => {
             const params = new URLSearchParams(window.location.search);
             const room = params.get('room');
