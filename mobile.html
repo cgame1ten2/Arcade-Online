@@ -392,7 +392,7 @@
             p5Lobby = new p5(sketch, 'lobby-avatar'); 
         }
 
-        // FIXED: Lowered translate Y (75 -> 90) and reduced size (100 -> 90)
+        // FIXED: Lowered translate Y (75 -> 100) and reduced size (100 -> 80)
         function initP5Controller() { 
             if(p5Btn) p5Btn.remove(); 
             document.getElementById('btn-avatar-target').innerHTML = ''; 
@@ -401,14 +401,14 @@
                 p.setup = () => { p.createCanvas(150, 150); sys = new AvatarSystem(p); }; 
                 p.draw = () => { 
                     p.clear(); 
-                    p.translate(75, 90); // Adjusted
-                    sys.draw({ x:0, y:0, size: 90, color: player.color, variant: player.variant, accessory: player.accessory, expression: 'angry' }); 
+                    p.translate(75, 100); 
+                    sys.draw({ x:0, y:0, size: 80, color: player.color, variant: player.variant, accessory: player.accessory, expression: 'angry' }); 
                 }; 
             }; 
             p5Btn = new p5(sketch, 'btn-avatar-target'); 
         }
 
-        // FIXED: Lowered translate Y (50 -> 60) and reduced size (80 -> 70)
+        // FIXED: Lowered translate Y (50 -> 70) and reduced size (80 -> 60)
         function initP5Touchpad() { 
             if(p5Touch) p5Touch.remove(); 
             document.getElementById('touch-avatar-target').innerHTML = ''; 
@@ -417,8 +417,8 @@
                 p.setup = () => { p.createCanvas(100, 100); sys = new AvatarSystem(p); }; 
                 p.draw = () => { 
                     p.clear(); 
-                    p.translate(50, 60); // Adjusted
-                    sys.draw({ x:0, y:0, size: 70, color: player.color, variant: player.variant, accessory: player.accessory, expression: 'idle' }); 
+                    p.translate(50, 70); 
+                    sys.draw({ x:0, y:0, size: 60, color: player.color, variant: player.variant, accessory: player.accessory, expression: 'idle' }); 
                 }; 
             }; 
             p5Touch = new p5(sketch, 'touch-avatar-target'); 
