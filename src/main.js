@@ -115,38 +115,6 @@ function init() {
         returnToHub();
     });
 
-    // Handle "Play Again" Replay Logic from BaseGame
-    window.addEventListener('game-replay', () => {
-        // Run countdown, then start play
-        ui.runCountdown(() => {
-            if (runner.activeGame) runner.activeGame.beginGameplay();
-        });
-    });
-
-    // Handle "Tournament Start Game" event to trigger countdown
-    window.addEventListener('tournament-game-start', (e) => {
-        const gameConfig = e.detail;
-        currentMode = 'game';
-        currentGameState = 'PLAYING';
-        gameStage.classList.remove('hidden');
-        pauseDemos();
-        
-        currentScreenType = 'CONTROLLER'; 
-        if (gameConfig.id === 'avatar-match') {
-            currentScreenType = 'TOUCHPAD'; 
-        }
-        network.broadcastState(currentScreenType, 'PLAYING');
-
-        // Show Tutorial then Countdown
-        ui.showTutorial(gameConfig, 3500, () => {
-            ui.runCountdown(() => {
-                if (runner.activeGame) {
-                    runner.activeGame.beginGameplay();
-                }
-            });
-        });
-    });
-
     window.addEventListener('remote-command', (e) => {
         const cmd = e.detail; 
         if (cmd.action === 'EXIT') returnToHub();
@@ -154,17 +122,15 @@ function init() {
             if (currentMode === 'game' && runner.activeGame) {
                 ui.hideMessage(); 
                 runner.activeGame.startNewRound();
-                // We need to wait for INTRO logic then unfreeze
-                setTimeout(() => { if(runner.activeGame) runner.activeGame.beginGameplay(); }, 1500);
             }
         }
         else if (cmd.action === 'PLAY_AGAIN') {
             if (currentMode === 'game' && runner.activeGame) {
                 ui.hideMessage(); 
-                runner.activeGame.setup();
-                ui.runCountdown(() => {
-                    if (runner.activeGame) runner.activeGame.beginGameplay();
-                });
+                // Fix: Trigger countdown via Setup in BaseGame logic, or manually here?
+                // The BaseGame.finishGame handles the local logic now.
+                // For Remote command, we need to replicate the 'Play Again' flow.
+                ui.runCountdown(() => runner.activeGame.setup());
             }
         }
         else if (cmd.action === 'SELECT_GAME') {
@@ -302,6 +268,7 @@ function enterGameMode(gameConfig) {
             ui.hideTransition();
             ui.runCountdown(() => {
                 if (runner.activeGame) {
+                    // FIXED: Call beginGameplay to UNFREEZE instead of re-rolling level
                     runner.activeGame.beginGameplay();
                 }
             });
