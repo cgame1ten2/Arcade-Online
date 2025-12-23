@@ -115,11 +115,16 @@ function init() {
         returnToHub();
     });
 
-    // NEW: Listen for Screen Type updates from Tournament Manager
-    window.addEventListener('update-screen-type', (e) => {
-        currentScreenType = e.detail;
-        // Broadcast immediately so phones switch UI before game starts
-        network.broadcastState(currentScreenType, currentGameState);
+    // NEW: Listen for game changes (from Tournament) to update screen type
+    window.addEventListener('game-selected', (e) => {
+        const gameId = e.detail;
+        if (gameId === 'avatar-match') {
+            currentScreenType = 'TOUCHPAD';
+        } else {
+            currentScreenType = 'CONTROLLER';
+        }
+        // Don't broadcast yet, BaseGame will trigger 'game-state-change' -> PLAYING shortly
+        // which broadcasts currentScreenType
     });
 
     window.addEventListener('remote-command', (e) => {
@@ -246,7 +251,6 @@ function createGameCard(gameConfig) {
 
 function enterGameMode(gameConfig) {
     if (!gameConfig) {
-        // Tournament just sets mode, TournamentManager handles the mounting
         currentMode = 'game';
         currentGameState = 'PLAYING';
         gameStage.classList.remove('hidden');
