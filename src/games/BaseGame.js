@@ -24,7 +24,7 @@ export default class BaseGame {
             turnBased: false,
             turnBasedBackgroundColor: false,
             controllerType: rules.controllerType || 'ONE_BUTTON', 
-            autoStart: true, // NEW: Defaults to true, but can be disabled
+            autoStart: true, 
             ...rules
         };
 
@@ -76,11 +76,19 @@ export default class BaseGame {
         this.p.createCanvas(parent.clientWidth, parent.clientHeight);
         this.calculateLayout();
 
+        // --- HARD RESET STATE ---
         this.state.round = 0;
         this.state.winner = null;
+        this.state.phase = 'SETUP';
+
+        // --- HARD RESET PLAYERS ---
         this.players.forEach(p => {
             p.score = 0;
+            p.isEliminated = false;
             p.isPermEliminated = false;
+            p.lives = this.config.livesPerRound;
+            p.statusType = (this.config.livesPerRound > 1) ? 'hearts' : 'score';
+            p.customStatus = (this.config.livesPerRound > 1) ? p.lives : undefined;
             p.cursorX = this.CX;
             p.cursorY = this.CY;
             p.inputVector = { x: 0, y: 0 };
@@ -89,9 +97,8 @@ export default class BaseGame {
         if (this.audio && this.mode !== 'demo') this.audio.setTrack('game');
 
         this.onSetup(); 
-        this.updateUI(); 
+        this.updateUI(); // Force visual refresh of hearts/score
 
-        // UPDATED LOGIC: Only start if autoStart is true
         if (this.config.autoStart) {
             this.startNewRound();
         }
