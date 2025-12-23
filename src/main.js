@@ -111,7 +111,6 @@ function init() {
         if (!setupOverlay.classList.contains('hidden')) renderVisualLobby();
     });
 
-    // NEW: Listen for Exit request from UI
     window.addEventListener('game-exit', () => {
         returnToHub();
     });
@@ -167,8 +166,8 @@ function showQrModal(code) {
             target.innerHTML = ''; 
             new QRCode(target, {
                 text: joinUrl,
-                width: 256, // DOUBLED SIZE
-                height: 256, // DOUBLED SIZE
+                width: 256,
+                height: 256,
                 colorDark : "#2c3e50",
                 colorLight : "#ffffff",
                 correctLevel : QRCode.CorrectLevel.H
@@ -264,9 +263,12 @@ function enterGameMode(gameConfig) {
 
         ui.showTutorial(gameConfig, 3500, () => {
             ui.hideTransition();
-            if (runner.activeGame) {
-                runner.activeGame.startNewRound();
-            }
+            // START COUNTDOWN
+            ui.runCountdown(() => {
+                if (runner.activeGame) {
+                    runner.activeGame.startNewRound();
+                }
+            });
         });
     });
 }
@@ -360,6 +362,7 @@ function renderVisualLobby() {
 function bindLobbyInputs() {
     const accessories = AvatarSystem.ACCESSORIES;
 
+    // --- FIX: GET PLAYER BY INDEX THEN USE ID ---
     document.querySelectorAll('.name-input').forEach(el => {
         el.addEventListener('input', (e) => {
             if(e.target.disabled) return;
