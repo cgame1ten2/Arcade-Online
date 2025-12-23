@@ -67,6 +67,9 @@ export default class BaseGame {
 
         this.isDestroyed = false;
         this.timerLastTick = 0;
+        
+        // Track if game has ever started to override autoStart:false on replays
+        this.hasStartedOnce = false; 
     }
 
     setup() {
@@ -99,7 +102,8 @@ export default class BaseGame {
         this.onSetup(); 
         this.updateUI(); // Force visual refresh of hearts/score
 
-        if (this.config.autoStart) {
+        // FIX: If we have started once (replay), ignore autoStart:false and GO.
+        if (this.config.autoStart || this.hasStartedOnce) {
             this.startNewRound();
         }
         
@@ -239,6 +243,9 @@ export default class BaseGame {
 
     startNewRound() {
         if (this.isDestroyed) return;
+
+        // Flag that we have officially started at least once
+        this.hasStartedOnce = true;
 
         this.state.phase = 'INTRO';
         this.state.round++;
