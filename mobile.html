@@ -14,12 +14,15 @@
         
         #screen-login { background: #2c3e50; color: white; }
         input.code-input { font-size: 30px; padding: 15px; text-align: center; text-transform: uppercase; border-radius: 12px; border: none; background: rgba(255,255,255,0.1); color: white; font-weight: bold; width: 220px; display: block; margin-bottom: 20px; }
-        button.action-btn { font-size: 20px; padding: 15px 30px; background: #2ecc71; border: none; color: white; border-radius: 12px; font-weight: bold; width: 220px; }
+        button.action-btn { font-size: 20px; padding: 15px 30px; background: #2ecc71; border: none; color: white; border-radius: 12px; font-weight: bold; width: 220px; cursor: pointer; }
         
         #screen-lobby { background: #2c3e50; }
         .player-card { background: white; border-radius: 16px; padding: 20px; width: 90%; max-width: 350px; display: flex; flex-direction: column; gap: 15px; color: #333; }
-        .setup-preview { width: 100%; height: 200px; background: #eee; border-radius: 12px; display: flex; justify-content: center; align-items: center; }
-        .name-input { width: 100%; padding: 10px; font-size: 1.2rem; text-align: center; border: 1px solid #ccc; border-radius: 8px; }
+        .setup-preview { width: 100%; height: 200px; background: #eee; border-radius: 12px; display: flex; justify-content: center; align-items: center; overflow: hidden; }
+        
+        /* Updated Input Style for better padding/sizing */
+        .name-input { width: 100%; padding: 10px 15px; font-size: 1.2rem; text-align: center; border: 1px solid #ccc; border-radius: 8px; box-sizing: border-box; }
+        
         .hue-slider { -webkit-appearance: none; appearance: none; width: 100%; height: 12px; border-radius: 6px; background: linear-gradient(to right, #ff0000, #ffff00, #00ff00, #00ffff, #0000ff, #ff00ff, #ff0000); outline: none; margin: 10px 0; }
         .hue-slider::-webkit-slider-thumb { -webkit-appearance: none; width: 28px; height: 28px; background: white; border: 3px solid #333; border-radius: 50%; box-shadow: 0 2px 5px rgba(0,0,0,0.3); }
         .opts-row { display: flex; gap: 10px; }
@@ -65,12 +68,15 @@
         <p id="status" style="margin-top: 20px; color: #f1c40f; opacity: 0;">Connecting...</p>
     </div>
 
-    <!-- RECONNECTING -->
+    <!-- RECONNECTING / ERROR -->
     <div id="screen-disconnect" class="screen">
         <div class="spinner"></div>
-        <h2>Disconnected</h2>
-        <p>Trying to reconnect...</p>
-        <button class="action-btn" style="margin-top:20px; background:#e74c3c" onclick="location.reload()">Reload</button>
+        <h2 id="disc-title">Disconnected</h2>
+        <p id="disc-msg">Connection lost. Host may have closed.</p>
+        <div style="display:flex; flex-direction:column; gap:10px; margin-top:20px;">
+            <button class="action-btn" style="background:#e74c3c" onclick="location.reload()">Retry Connection</button>
+            <button class="action-btn" style="background:#95a5a6" onclick="backToLogin()">Enter New Code</button>
+        </div>
     </div>
 
     <!-- LOBBY -->
@@ -138,6 +144,7 @@
         let p5Lobby, p5Btn, p5Touch; 
         let currentContext = 'IDLE'; 
         let heartbeatInterval = null;
+        let lastPacketTime = 0;
         let wakeLock = null;
         const accessories = AvatarSystem.ACCESSORIES;
         
@@ -159,19 +166,27 @@
             if(code.length < 4) return;
             
             document.getElementById('status').style.opacity = 1;
-            requestWakeLock(); // Trigger on interaction
+            document.getElementById('status').innerText = "Connecting...";
+            requestWakeLock(); 
             
+            if(peer) peer.destroy();
             peer = new Peer();
+            
             peer.on('open', (id) => {
                 connectToHost(code);
             });
+            
             peer.on('error', (err) => {
                 console.error(err);
-                showDisconnectScreen();
+                if(err.type === 'peer-unavailable') {
+                    showDisconnectScreen("Room Not Found", "Check the code on TV.");
+                } else {
+                    showDisconnectScreen("Connection Error", "Check internet.");
+                }
             });
+            
             peer.on('disconnected', () => {
                 showDisconnectScreen();
-                // PeerJS specific: reconnect to signalling server
                 peer.reconnect();
             });
         };
@@ -183,6 +198,7 @@
             conn.on('open', () => { 
                 document.getElementById('status').innerText = "Authenticating...";
                 hideDisconnectScreen();
+                lastPacketTime = Date.now();
                 startHeartbeat();
             });
             
@@ -190,23 +206,32 @@
             
             conn.on('close', () => {
                 showDisconnectScreen();
-                // Attempt auto-reconnect logic could go here, 
-                // but usually requires user action or peer re-init
             });
-            
-            conn.on('error', () => showDisconnectScreen());
         }
 
         function startHeartbeat() {
             if (heartbeatInterval) clearInterval(heartbeatInterval);
+            
+            // Watchdog & Heartbeat Loop
             heartbeatInterval = setInterval(() => {
+                const now = Date.now();
+                
+                // 1. Send Heartbeat
                 if(conn && conn.open) {
                     conn.send({ type: 'HEARTBEAT' });
                 }
-            }, 2000); // Send every 2 seconds
+
+                // 2. Check Watchdog (Timeout)
+                if (now - lastPacketTime > 4000) {
+                    // No data received from host for 4 seconds
+                    showDisconnectScreen("Host Lost", "Host stopped responding.");
+                }
+            }, 2000); 
         }
 
-        function showDisconnectScreen() {
+        function showDisconnectScreen(title = "Disconnected", msg = "Connection lost.") {
+            document.getElementById('disc-title').innerText = title;
+            document.getElementById('disc-msg').innerText = msg;
             document.getElementById('screen-disconnect').classList.add('active');
         }
 
@@ -214,7 +239,22 @@
             document.getElementById('screen-disconnect').classList.remove('active');
         }
 
+        window.backToLogin = () => {
+            // Remove ?room=XXXX from URL without refreshing
+            const url = new URL(window.location.href);
+            url.searchParams.delete('room');
+            window.history.pushState({}, '', url);
+            
+            if(peer) peer.destroy();
+            if(heartbeatInterval) clearInterval(heartbeatInterval);
+            
+            hideDisconnectScreen();
+            showScreen('screen-login');
+        };
+
         function handleData(data) {
+            lastPacketTime = Date.now(); // Update Watchdog
+
             if (data.type === 'WHO_ARE_YOU') conn.send({ type: 'HELLO', uuid: myUUID });
             else if(data.type === 'INIT') {
                 player = { ...player, ...data };
@@ -222,7 +262,7 @@
                 initP5Lobby();
                 updateLobbyUI();
                 document.getElementById('global-menu-btn').classList.remove('hidden');
-                doVibrate(50); // Haptic confirm
+                doVibrate(50); 
             }
             else if (data.type === 'PING') conn.send({ type: 'PONG', ts: data.ts });
             else if (data.type === 'VIBRATE') doVibrate(data.duration || 200);
@@ -326,7 +366,7 @@
 
         window.sendVec = (x, y, e) => { 
             if(e) e.preventDefault(); 
-            doVibrate(10); // Light feedback on d-pad
+            doVibrate(10); 
             sendInput('VECTOR', { x, y }); 
         };
         
@@ -338,7 +378,22 @@
         }
 
         function showScreen(id) { document.querySelectorAll('.screen').forEach(s => s.classList.remove('active')); document.getElementById(id).classList.add('active'); }
-        function initP5Lobby() { if(p5Lobby) return; const sketch = (p) => { let sys; p.setup = () => { p.createCanvas(200, 200); sys = new AvatarSystem(p); }; p.draw = () => { p.clear(); p.translate(100, 100); sys.draw({ x:0, y:0, size:130, color: player.color, variant: player.variant, accessory: player.accessory, expression: 'happy' }); }; }; p5Lobby = new p5(sketch, 'lobby-avatar'); }
+        
+        function initP5Lobby() { 
+            if(p5Lobby) return; 
+            const sketch = (p) => { 
+                let sys; 
+                p.setup = () => { p.createCanvas(200, 200); sys = new AvatarSystem(p); }; 
+                p.draw = () => { 
+                    p.clear(); 
+                    // FIXED: Moved Y down to 120 and Reduced Size to 110 to fit Bunny Ears/Accessories
+                    p.translate(100, 120); 
+                    sys.draw({ x:0, y:0, size:110, color: player.color, variant: player.variant, accessory: player.accessory, expression: 'happy' }); 
+                }; 
+            }; 
+            p5Lobby = new p5(sketch, 'lobby-avatar'); 
+        }
+
         function initP5Controller() { if(p5Btn) p5Btn.remove(); document.getElementById('btn-avatar-target').innerHTML = ''; const sketch = (p) => { let sys; p.setup = () => { p.createCanvas(150, 150); sys = new AvatarSystem(p); }; p.draw = () => { p.clear(); p.translate(75, 75); sys.draw({ x:0, y:0, size:100, color: player.color, variant: player.variant, accessory: player.accessory, expression: 'angry' }); }; }; p5Btn = new p5(sketch, 'btn-avatar-target'); }
         function initP5Touchpad() { if(p5Touch) p5Touch.remove(); document.getElementById('touch-avatar-target').innerHTML = ''; const sketch = (p) => { let sys; p.setup = () => { p.createCanvas(100, 100); sys = new AvatarSystem(p); }; p.draw = () => { p.clear(); p.translate(50, 50); sys.draw({ x:0, y:0, size:80, color: player.color, variant: player.variant, accessory: player.accessory, expression: 'idle' }); }; }; p5Touch = new p5(sketch, 'touch-avatar-target'); }
         
@@ -359,7 +414,6 @@
             }
         });
         
-        // Handle visibility change to re-request wake lock if lost
         document.addEventListener('visibilitychange', async () => {
             if (wakeLock !== null && document.visibilityState === 'visible') {
                 requestWakeLock();
