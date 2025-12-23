@@ -115,6 +115,13 @@ function init() {
         returnToHub();
     });
 
+    // NEW: Listen for Screen Type updates from Tournament Manager
+    window.addEventListener('update-screen-type', (e) => {
+        currentScreenType = e.detail;
+        // Broadcast immediately so phones switch UI before game starts
+        network.broadcastState(currentScreenType, currentGameState);
+    });
+
     window.addEventListener('remote-command', (e) => {
         const cmd = e.detail; 
         if (cmd.action === 'EXIT') returnToHub();
@@ -239,6 +246,7 @@ function createGameCard(gameConfig) {
 
 function enterGameMode(gameConfig) {
     if (!gameConfig) {
+        // Tournament just sets mode, TournamentManager handles the mounting
         currentMode = 'game';
         currentGameState = 'PLAYING';
         gameStage.classList.remove('hidden');
