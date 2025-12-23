@@ -68,7 +68,6 @@ export default class BaseGame {
         this.isDestroyed = false;
         this.timerLastTick = 0;
         
-        // Track if this is the very first boot up of the game instance
         this.isFirstBoot = true; 
         this.hasStartedOnce = false;
     }
@@ -80,13 +79,10 @@ export default class BaseGame {
         this.p.createCanvas(parent.clientWidth, parent.clientHeight);
         this.calculateLayout();
 
-        // --- HARD RESET STATE ---
         this.state.round = 0;
         this.state.winner = null;
         this.state.phase = 'SETUP';
         
-        // Don't reset isFirstBoot (handled in constructor only)
-
         this.players.forEach(p => {
             p.score = 0;
             p.isEliminated = false;
@@ -113,14 +109,12 @@ export default class BaseGame {
         }
     }
 
-    // NEW: Transition from Tutorial Freeze to Active Gameplay without regenerating level
     beginGameplay() {
         if (this.state.phase === 'TUTORIAL') {
             this.state.phase = 'PLAYING';
             this.timerLastTick = this.p.millis();
             window.dispatchEvent(new CustomEvent('game-state-change', { detail: 'PLAYING' }));
         } else {
-            // If called in other states, just start round normally
             this.startNewRound();
         }
     }
@@ -470,10 +464,8 @@ export default class BaseGame {
         if (this.mode === 'tournament' && this.onGameComplete) {
             this.onGameComplete(this.players); 
         } else if (this.mode === 'active') {
-            // FIX: Removed countdown, just setup immediately on play again
-            this.ui.showPodium(this.players, "Play Again", () => {
-                this.setup();
-            });
+            // FIX: Removed runCountdown
+            this.ui.showPodium(this.players, "Play Again", () => this.setup());
         } else {
             this.setup();
         }
