@@ -80,6 +80,7 @@ export default class BaseGame {
         this.p.createCanvas(parent.clientWidth, parent.clientHeight);
         this.calculateLayout();
 
+        // --- HARD RESET STATE ---
         this.state.round = 0;
         this.state.winner = null;
         this.state.phase = 'SETUP';
@@ -469,9 +470,9 @@ export default class BaseGame {
         if (this.mode === 'tournament' && this.onGameComplete) {
             this.onGameComplete(this.players); 
         } else if (this.mode === 'active') {
-            // FIX: Play Again now triggers countdown then setup
+            // FIX: Removed countdown, just setup immediately on play again
             this.ui.showPodium(this.players, "Play Again", () => {
-                this.ui.runCountdown(() => this.setup());
+                this.setup();
             });
         } else {
             this.setup();
