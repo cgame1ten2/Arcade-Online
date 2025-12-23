@@ -68,6 +68,7 @@ export default class BaseGame {
         this.isDestroyed = false;
         this.timerLastTick = 0;
         
+        // Track if this is the very first boot up of the game instance
         this.isFirstBoot = true; 
         this.hasStartedOnce = false;
     }
@@ -83,6 +84,7 @@ export default class BaseGame {
         this.state.winner = null;
         this.state.phase = 'SETUP';
         
+        // Reset Player Stats
         this.players.forEach(p => {
             p.score = 0;
             p.isEliminated = false;
@@ -100,21 +102,26 @@ export default class BaseGame {
         this.onSetup(); 
         this.updateUI(); 
 
-        if (this.config.autoStart || this.hasStartedOnce) {
-            this.startNewRound();
-        }
+        // CRITICAL FIX: Always call startNewRound() to spawn entities (cars, avatars)
+        // The "Phase" logic inside startNewRound will decide if we freeze inputs or not.
+        this.startNewRound();
         
         if (this.mode !== 'demo') {
-            window.dispatchEvent(new CustomEvent('game-state-change', { detail: 'PLAYING' }));
+            // If we are auto-starting (like Play Again), update state immediately
+            if (this.config.autoStart || this.hasStartedOnce) {
+                window.dispatchEvent(new CustomEvent('game-state-change', { detail: 'PLAYING' }));
+            }
         }
     }
 
+    // Called by main.js after Tutorial Card closes
     beginGameplay() {
         if (this.state.phase === 'TUTORIAL') {
             this.state.phase = 'PLAYING';
             this.timerLastTick = this.p.millis();
             window.dispatchEvent(new CustomEvent('game-state-change', { detail: 'PLAYING' }));
         } else {
+            // Fallback
             this.startNewRound();
         }
     }
@@ -134,6 +141,7 @@ export default class BaseGame {
         }
         this.timerLastTick = now;
 
+        // Input Physics (always update cursor positions for smooth UI even in tutorial)
         this.players.forEach(pl => {
             if (this.config.controllerType === 'TOUCHPAD') {
                 if(pl.inputVector.x !== 0 || pl.inputVector.y !== 0) {
@@ -217,6 +225,8 @@ export default class BaseGame {
     }
 
     handleInput(playerId, type, payload) {
+        // STRICT CHECK: Only allow inputs in PLAYING phase
+        // This effectively pauses the game during TUTORIAL or SETUP
         if (this.isDestroyed || this.state.phase !== 'PLAYING') return;
 
         const p = this.players.find(pl => pl.id === playerId);
@@ -252,7 +262,7 @@ export default class BaseGame {
         if (this.isDestroyed) return;
 
         this.hasStartedOnce = true;
-        this.state.phase = 'INTRO';
+        this.state.phase = 'INTRO'; // Brief state before PLAYING or TUTORIAL
         
         if (this.mode === 'active' || this.mode === 'tournament') {
             this.state.round++;
@@ -287,25 +297,35 @@ export default class BaseGame {
         }
         
         this.updateUI();
+        
+        // !!! IMPORTANT: This spawns the cars/players !!!
         this.onRoundStart();
 
         if (this.mode !== 'demo') {
+            // LOGIC:
+            // 1. If it's a Replay (hasStartedOnce) -> Play Immediately
+            // 2. If config.autoStart is true -> Play Immediately
+            // 3. Otherwise (First load, tutorial mode) -> Freeze in TUTORIAL
+            
             const shouldPlay = this.config.autoStart || !this.isFirstBoot;
 
             if (shouldPlay) {
-                window.dispatchEvent(new CustomEvent('game-state-change', { detail: 'PLAYING' }));
+                // Short delay for visual transition
                 const delay = 800;
                 setTimeout(() => {
                     if (!this.isDestroyed) {
                         this.state.phase = 'PLAYING';
                         this.timerLastTick = this.p.millis();
+                        window.dispatchEvent(new CustomEvent('game-state-change', { detail: 'PLAYING' }));
                     }
                 }, delay);
             } else {
+                // Freeze game logic, but render frame
                 this.state.phase = 'TUTORIAL';
                 this.isFirstBoot = false; 
             }
         } else {
+            // Demo mode always plays
             setTimeout(() => {
                 if (!this.isDestroyed) {
                     this.state.phase = 'PLAYING';
@@ -464,7 +484,6 @@ export default class BaseGame {
         if (this.mode === 'tournament' && this.onGameComplete) {
             this.onGameComplete(this.players); 
         } else if (this.mode === 'active') {
-            // FIX: Removed runCountdown
             this.ui.showPodium(this.players, "Play Again", () => this.setup());
         } else {
             this.setup();
