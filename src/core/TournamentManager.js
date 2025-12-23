@@ -7,13 +7,15 @@ export default class TournamentManager {
         this.runner = gameRunner;
         this.ui = uiManager;
         this.players = playerManager;
-        this.onExitCallback = onExitCallback; // Store the callback
+        this.onExitCallback = onExitCallback;
 
         this.isActive = false;
         this.roundsTotal = 0;
         this.currentRoundIdx = 0;
         this.gameQueue = [];
         this.standings = [];
+        
+        // Listen for Replay requests from Main (handled in GameRunner generally, but here for context)
     }
 
     startTournament(numberOfGames) {
@@ -21,10 +23,11 @@ export default class TournamentManager {
         this.roundsTotal = numberOfGames;
         this.currentRoundIdx = 0;
 
-        // Reset Standings
+        // Reset Standings - Initialize with 0
         this.standings = this.players.getActivePlayers().map(p => ({
             id: p.id,
-            points: 0
+            points: 0,
+            prevPoints: 0 // New field for animation
         }));
 
         this.draftGames(numberOfGames);
@@ -49,24 +52,33 @@ export default class TournamentManager {
 
         this.runner.audioManager.setTrack('lobby');
 
-        this.ui.showTournamentStandings(this.standings, this.players.getActivePlayers(), title, subtitle, () => {
+        // Pass the max possible points for scaling
+        // Max points per round is 3. Total possible = rounds * 3.
+        const maxPossible = this.roundsTotal * 3;
+
+        this.ui.showTournamentStandings(this.standings, this.players.getActivePlayers(), title, subtitle, maxPossible, () => {
             this.runner.audioManager.setTrack('game');
             this.launchGame(nextGame);
         });
     }
 
     launchGame(gameConfig) {
-        // DEFINE RULES based on game type
-        // We want short, punchy games for tournaments.
         const rules = {
-            winValue: 3, // Default: First to 3 points/wins
+            winValue: 3, 
             livesPerRound: 1
         };
 
-        // Custom tweaks per game ID if needed
         if (gameConfig.id === 'red-light') rules.winValue = 3; 
         if (gameConfig.id === 'code-breaker') rules.winValue = 1; 
 
+        // Launch with autoStart: false (controlled by Main for tutorial/countdown)
+        // Note: Main.js triggers the tutorial overlay via `enterGameMode`. 
+        // TournamentManager actually bypasses Main's `enterGameMode` usually.
+        // We need to trigger the countdown here or let Main handle it.
+        // To keep it simple: We mount via runner, then manually trigger countdown.
+        
+        window.dispatchEvent(new CustomEvent('tournament-game-start', { detail: gameConfig }));
+        
         this.runner.mount(
             gameConfig.class,
             'game-canvas-container',
@@ -77,10 +89,11 @@ export default class TournamentManager {
     }
 
     handleGameComplete(gameResults) {
-        // gameResults is the array of players from BaseGame, with their local .score populated
         const sorted = [...gameResults].sort((a, b) => b.score - a.score);
 
-        // Award Tournament Points (3, 2, 1)
+        // Update Previous Points before adding new ones
+        this.standings.forEach(s => s.prevPoints = s.points);
+
         sorted.forEach((p, index) => {
             let points = 0;
             if (index === 0) points = 3;
@@ -110,11 +123,10 @@ export default class TournamentManager {
         this.runner.audioManager.setTrack('victory');
 
         this.ui.showPodium(finalResults, "Back to Hub", () => {
-            // SOFT EXIT using callback
             if (this.onExitCallback) {
                 this.onExitCallback();
             } else {
-                location.reload(); // Fallback if no callback provided
+                location.reload(); 
             }
         });
     }
