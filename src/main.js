@@ -63,9 +63,8 @@ function init() {
                 hostBtnRef.innerText = `Room: ${code}`;
                 hostBtnRef.style.background = '#2ecc71';
                 hostBtnRef.style.borderColor = '#27ae60';
-                hostBtnRef.disabled = false; // Re-enable so it can be clicked again
+                hostBtnRef.disabled = false;
                 
-                // Change onclick to just show QR modal
                 hostBtnRef.onclick = () => {
                     audio.play('click');
                     showQrModal(code);
@@ -133,7 +132,6 @@ function init() {
             if (gameConfig && currentMode === 'hub') {
                 audio.play('click');
                 enterGameMode(gameConfig);
-                runner.mount(gameConfig.class, 'game-canvas-container', 'active');
             }
         }
     });
@@ -158,7 +156,6 @@ function showQrModal(code) {
         () => ui.hideMessage()
     );
 
-    // Short timeout to let the DOM render the modal content
     setTimeout(() => {
         const target = document.getElementById('host-qr-target');
         if(target && window.QRCode) {
@@ -229,7 +226,6 @@ function createGameCard(gameConfig) {
     card.addEventListener('click', () => {
         audio.play('click');
         enterGameMode(gameConfig);
-        runner.mount(gameConfig.class, 'game-canvas-container', 'active');
     });
     hubGrid.appendChild(card);
     const p5inst = runner.mount(gameConfig.class, canvasId, 'demo');
@@ -237,26 +233,55 @@ function createGameCard(gameConfig) {
     demoInstances.push(p5inst);
 }
 
+// --- UPDATED: Centralized Transition & Tutorial Sequence ---
 function enterGameMode(gameConfig) {
-    currentMode = 'game';
-    currentGameState = 'PLAYING';
-    audio.setTrack('game');
-    gameStage.classList.remove('hidden');
-    pauseDemos();
-
-    currentScreenType = 'CONTROLLER'; 
-    if (gameConfig && gameConfig.id === 'avatar-match') {
-        currentScreenType = 'TOUCHPAD'; 
+    if (!gameConfig) {
+        // Fallback for Tournament Mode (null config passed initially)
+        // Tournament manager handles its own flow, so we just set state.
+        currentMode = 'game';
+        currentGameState = 'PLAYING';
+        gameStage.classList.remove('hidden');
+        pauseDemos();
+        return;
     }
-    
-    network.broadcastState(currentScreenType, 'PLAYING');
+
+    // 1. Trigger Transition Fade
+    ui.showTransition(() => {
+        // 2. Setup State
+        currentMode = 'game';
+        currentGameState = 'PLAYING';
+        audio.setTrack('game');
+        gameStage.classList.remove('hidden');
+        pauseDemos();
+
+        currentScreenType = 'CONTROLLER'; 
+        if (gameConfig.id === 'avatar-match') {
+            currentScreenType = 'TOUCHPAD'; 
+        }
+        network.broadcastState(currentScreenType, 'PLAYING');
+
+        // 3. Mount Game (Frozen via autoStart: false)
+        runner.mount(gameConfig.class, 'game-canvas-container', 'active', null, { autoStart: false });
+
+        // 4. Show Tutorial Card
+        ui.showTutorial(gameConfig, 3500, () => {
+            // 5. Hide Transition & Start Game Logic
+            ui.hideTransition();
+            if (runner.activeGame) {
+                runner.activeGame.startNewRound();
+            }
+        });
+    });
 }
 
 function returnToHub() {
     audio.play('click');
-    gameStage.classList.add('hidden');
-    runner.mount(null, 'game-canvas-container', 'active');
-    renderHub();
+    ui.showTransition(() => {
+        gameStage.classList.add('hidden');
+        runner.mount(null, 'game-canvas-container', 'active');
+        renderHub();
+        ui.hideTransition();
+    });
 }
 
 function pauseDemos() { demoInstances.forEach(p5inst => p5inst.noLoop()); }
@@ -281,8 +306,13 @@ function showTournamentSetup() {
     window.startTourney = (rounds) => {
         ui.hideMessage();
         audio.play('click');
-        enterGameMode(null); 
-        tournament.startTournament(rounds);
+        
+        // Manual transition for tournament start
+        ui.showTransition(() => {
+            enterGameMode(null); 
+            tournament.startTournament(rounds);
+            ui.hideTransition();
+        });
     };
     document.getElementById('cancel-tourney').onclick = () => { audio.play('click'); ui.hideMessage(); };
 }
@@ -335,6 +365,7 @@ function renderVisualLobby() {
 function bindLobbyInputs() {
     const accessories = AvatarSystem.ACCESSORIES;
 
+    // --- FIX: GET PLAYER BY INDEX THEN USE ID ---
     document.querySelectorAll('.name-input').forEach(el => {
         el.addEventListener('input', (e) => {
             if(e.target.disabled) return;
