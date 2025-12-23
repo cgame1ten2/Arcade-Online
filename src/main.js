@@ -127,7 +127,7 @@ function init() {
         else if (cmd.action === 'PLAY_AGAIN') {
             if (currentMode === 'game' && runner.activeGame) {
                 ui.hideMessage(); 
-                runner.activeGame.setup(); // Fixed: Setup now handles start
+                runner.activeGame.setup(); 
             }
         }
         else if (cmd.action === 'SELECT_GAME') {
@@ -239,7 +239,6 @@ function createGameCard(gameConfig) {
 
 function enterGameMode(gameConfig) {
     if (!gameConfig) {
-        // Tournament just sets mode, TournamentManager handles the mounting
         currentMode = 'game';
         currentGameState = 'PLAYING';
         gameStage.classList.remove('hidden');
@@ -303,7 +302,6 @@ function showTournamentSetup() {
     window.startTourney = (rounds) => {
         ui.hideMessage();
         audio.play('click');
-        
         ui.showTransition(() => {
             enterGameMode(null); 
             tournament.startTournament(rounds);
