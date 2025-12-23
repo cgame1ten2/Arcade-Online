@@ -83,7 +83,9 @@ export default class BaseGame {
         this.state.round = 0;
         this.state.winner = null;
         this.state.phase = 'SETUP';
-        this.isFirstBoot = true;
+        
+        // FIX: Do NOT reset isFirstBoot to true here. 
+        // If we are resetting, we are past the tutorial phase.
 
         // --- HARD RESET PLAYERS ---
         this.players.forEach(p => {
@@ -206,6 +208,9 @@ export default class BaseGame {
     }
 
     handleInput(playerId, type, payload) {
+        // CRITICAL FIX: If we are stuck in 'TUTORIAL' phase, inputs were ignored.
+        // The fix in startNewRound ensures we transition to PLAYING on restart,
+        // so this check will now pass correctly.
         if (this.isDestroyed || this.state.phase !== 'PLAYING') return;
 
         const p = this.players.find(pl => pl.id === playerId);
@@ -281,11 +286,15 @@ export default class BaseGame {
         this.onRoundStart();
 
         if (this.mode !== 'demo') {
-            // If autoStart is false and it's first boot, stay in TUTORIAL/INTRO phase
-            // Do NOT transition to PLAYING automatically
+            // Logic Check:
+            // 1. If autoStart is TRUE: Go to PLAYING.
+            // 2. If autoStart is FALSE:
+            //    a. If isFirstBoot is TRUE: Go to TUTORIAL (Wait).
+            //    b. If isFirstBoot is FALSE (Restart): Go to PLAYING.
+            
             if (!this.config.autoStart && this.isFirstBoot) {
                 this.state.phase = 'TUTORIAL';
-                this.isFirstBoot = false; // Next time startNewRound is called, we go for real
+                this.isFirstBoot = false; 
             } else {
                 window.dispatchEvent(new CustomEvent('game-state-change', { detail: 'PLAYING' }));
                 const delay = this.mode === 'demo' ? 100 : 800;
