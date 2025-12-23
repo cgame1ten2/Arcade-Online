@@ -62,31 +62,38 @@ export default class TournamentManager {
     }
 
     launchGame(gameConfig) {
-        // FIX: Match standard game entry flow (Transition -> Tutorial -> Start)
+        const rules = {
+            winValue: 3, 
+            livesPerRound: 1
+        };
+
+        if (gameConfig.id === 'red-light') rules.winValue = 3; 
+        if (gameConfig.id === 'code-breaker') rules.winValue = 1; 
+
+        // UPDATED: Use the standard Transition -> Tutorial -> Start flow
         this.ui.showTransition(() => {
-            const rules = {
-                winValue: 3, 
-                livesPerRound: 1,
-                autoStart: false // Pause for tutorial
-            };
-
-            if (gameConfig.id === 'red-light') rules.winValue = 3; 
-            if (gameConfig.id === 'code-breaker') rules.winValue = 1; 
-
-            // Mount game in frozen state
+            // Set network state
+            let screenType = 'CONTROLLER';
+            if (gameConfig.id === 'avatar-match') screenType = 'TOUCHPAD';
+            // We need to access network manager to broadcast state, but we don't have direct access here.
+            // However, GameRunner mounting triggers 'game-state-change' event eventually. 
+            // Better to dispatch manually to be safe or ensure GameRunner does it.
+            // Since we don't have direct access to network here, we rely on the flow.
+            
+            // Mount Frozen
             this.runner.mount(
                 gameConfig.class,
                 'game-canvas-container',
                 'tournament',
                 (results) => this.handleGameComplete(results),
-                rules
+                { ...rules, autoStart: false }
             );
 
             // Show Tutorial
             this.ui.showTutorial(gameConfig, 3500, () => {
                 this.ui.hideTransition();
-                // Start Game
-                if(this.runner.activeGame) {
+                // UNFREEZE
+                if (this.runner.activeGame) {
                     this.runner.activeGame.beginGameplay();
                 }
             });
@@ -140,6 +147,7 @@ export default class TournamentManager {
         this.runner.audioManager.setTrack('victory');
 
         this.ui.showPodium(finalResults, "Back to Hub", () => {
+            // UPDATED: Use Callback instead of reload
             if (this.onExitCallback) {
                 this.onExitCallback();
             } else {
