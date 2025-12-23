@@ -1,9 +1,27 @@
+/* src/core/UIManager.js */
+
 import AvatarSystem from './AvatarSystem.js';
 
 export default class UIManager {
     constructor() {
         this.scoreboard = document.getElementById('ui-scoreboard');
         this.centerMessage = document.getElementById('ui-center-message');
+
+        // Ensure Overlay Elements Exist
+        if (!document.getElementById('transition-curtain')) {
+            const curtain = document.createElement('div');
+            curtain.id = 'transition-curtain';
+            document.body.appendChild(curtain);
+        }
+        
+        if (!document.getElementById('tutorial-overlay')) {
+            const tut = document.createElement('div');
+            tut.id = 'tutorial-overlay';
+            document.body.appendChild(tut);
+        }
+
+        this.transitionCurtain = document.getElementById('transition-curtain');
+        this.tutorialOverlay = document.getElementById('tutorial-overlay');
 
         // Inject CSS for Heart Icons if not present
         if (!document.getElementById('heart-style')) {
@@ -27,6 +45,41 @@ export default class UIManager {
         }
     }
 
+    // --- TRANSITION SYSTEM ---
+    showTransition(callback) {
+        this.transitionCurtain.classList.add('active');
+        setTimeout(() => {
+            if (callback) callback();
+        }, 500); // Wait for fade in
+    }
+
+    hideTransition() {
+        this.transitionCurtain.classList.remove('active');
+    }
+
+    showTutorial(gameConfig, duration, onComplete) {
+        this.tutorialOverlay.innerHTML = `
+            <span class="tutorial-icon">🕹️</span>
+            <div class="tutorial-title">${gameConfig.title}</div>
+            <div class="tutorial-text">${gameConfig.tutorial || "Good luck!"}</div>
+            <div class="tutorial-progress"><div class="tutorial-bar"></div></div>
+        `;
+        
+        this.tutorialOverlay.classList.add('visible');
+        
+        // Trigger bar animation slightly after render
+        setTimeout(() => {
+            const bar = this.tutorialOverlay.querySelector('.tutorial-bar');
+            if(bar) bar.style.width = '100%';
+        }, 50);
+
+        setTimeout(() => {
+            this.tutorialOverlay.classList.remove('visible');
+            if (onComplete) onComplete();
+        }, duration);
+    }
+
+    // --- SCOREBOARD ---
     updateScoreboard(players) {
         if (!this.scoreboard) return;
         this.scoreboard.innerHTML = '';
@@ -41,7 +94,6 @@ export default class UIManager {
 
             if (p.statusType === 'hearts') {
                 const lives = parseInt(p.customStatus) || 0;
-                // Logic: Show individual hearts for 1-3, Number for 4+
                 if (lives > 0 && lives <= 3) {
                     statusHTML = `<div class="heart-container">`;
                     for (let i = 0; i < lives; i++) {
@@ -51,7 +103,6 @@ export default class UIManager {
                     }
                     statusHTML += `</div>`;
                 } else {
-                    // Numeric Fallback (e.g. "4 ❤️")
                     statusHTML = `<div class="heart-container">
                         <span class="heart-count">${lives}</span>
                         <div class="heart-icon" style="background:${p.color}">
@@ -145,10 +196,8 @@ export default class UIManager {
                     sketch.setup = () => { sketch.createCanvas(120, 140); sketch.loop(); };
                     sketch.draw = () => {
                         sketch.clear(); sketch.push();
-                        // Lowered translate to 90 to fit ears/halos
                         sketch.translate(60, 90);
                         avatars.applyTransform(anim);
-                        // Slightly smaller size to fit canvas
                         avatars.draw({ x: 0, y: 0, size: 70, color: p.color, variant: p.variant, accessory: p.accessory, expression: exp });
                         sketch.pop();
                     };
@@ -160,7 +209,6 @@ export default class UIManager {
     showTournamentStandings(standings, players, title, subtitle, onNext) {
         if (!this.centerMessage) return;
 
-        // Sort by points
         const sortedStats = [...standings].sort((a, b) => b.points - a.points);
         const maxPoints = Math.max(1, sortedStats[0].points);
 
@@ -200,7 +248,6 @@ export default class UIManager {
         this.centerMessage.classList.add('visible');
         this._bindButton('tourney-next-btn', onNext);
 
-        // Render Avatars in List
         setTimeout(() => {
             sortedStats.forEach((stat, idx) => {
                 const p = players.find(pl => pl.id === stat.id);
