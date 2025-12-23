@@ -15,10 +15,8 @@ const inputs = new InputManager(players);
 const ui = new UIManager();
 const audio = new AudioManager();
 const runner = new GameRunner(players, inputs, ui, audio);
+const tournament = new TournamentManager(runner, ui, players);
 const network = new NetworkManager(players, inputs);
-
-// FIX: Pass returnToHub so tournament doesn't refresh page on exit
-const tournament = new TournamentManager(runner, ui, players, () => returnToHub());
 
 inputs.setNetworkManager(network);
 
@@ -129,7 +127,7 @@ function init() {
         else if (cmd.action === 'PLAY_AGAIN') {
             if (currentMode === 'game' && runner.activeGame) {
                 ui.hideMessage(); 
-                runner.activeGame.setup(); 
+                runner.activeGame.setup(); // Fixed: Setup now handles start
             }
         }
         else if (cmd.action === 'SELECT_GAME') {
@@ -241,6 +239,7 @@ function createGameCard(gameConfig) {
 
 function enterGameMode(gameConfig) {
     if (!gameConfig) {
+        // Tournament just sets mode, TournamentManager handles the mounting
         currentMode = 'game';
         currentGameState = 'PLAYING';
         gameStage.classList.remove('hidden');
@@ -265,7 +264,6 @@ function enterGameMode(gameConfig) {
 
         ui.showTutorial(gameConfig, 3500, () => {
             ui.hideTransition();
-            // REMOVED 3-2-1 COUNTDOWN, JUST START
             if (runner.activeGame) {
                 runner.activeGame.beginGameplay();
             }
@@ -305,6 +303,7 @@ function showTournamentSetup() {
     window.startTourney = (rounds) => {
         ui.hideMessage();
         audio.play('click');
+        
         ui.showTransition(() => {
             enterGameMode(null); 
             tournament.startTournament(rounds);
