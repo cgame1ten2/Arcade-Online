@@ -7,42 +7,123 @@ export default class UIManager {
         this.scoreboard = document.getElementById('ui-scoreboard');
         this.centerMessage = document.getElementById('ui-center-message');
 
-        // Ensure Overlay Elements Exist
-        if (!document.getElementById('transition-curtain')) {
-            const curtain = document.createElement('div');
-            curtain.id = 'transition-curtain';
-            document.body.appendChild(curtain);
-        }
+        // Ensure Overlays Exist
+        this._ensureElement('transition-curtain');
+        this._ensureElement('tutorial-overlay');
+        this._ensureElement('countdown-overlay');
         
-        if (!document.getElementById('tutorial-overlay')) {
-            const tut = document.createElement('div');
-            tut.id = 'tutorial-overlay';
-            document.body.appendChild(tut);
+        // Ensure Confetti Canvas
+        if (!document.getElementById('confetti-canvas')) {
+            const cvs = document.createElement('canvas');
+            cvs.id = 'confetti-canvas';
+            document.body.appendChild(cvs);
         }
 
         this.transitionCurtain = document.getElementById('transition-curtain');
         this.tutorialOverlay = document.getElementById('tutorial-overlay');
+        this.countdownOverlay = document.getElementById('countdown-overlay');
+        this.confettiCanvas = document.getElementById('confetti-canvas');
+        this.confettiCtx = this.confettiCanvas.getContext('2d');
+        this.confettiParticles = [];
 
-        // Inject CSS for Heart Icons if not present
+        // Inject CSS for Heart Icons
         if (!document.getElementById('heart-style')) {
             const style = document.createElement('style');
             style.id = 'heart-style';
             style.innerHTML = `
                 .heart-container { display: flex; align-items: center; margin-left: 8px; gap: 4px; }
-                .heart-icon { 
-                    display: inline-block; width: 10px; height: 10px; 
-                    transform: rotate(45deg); position: relative; 
-                }
-                .heart-icon:before, .heart-icon:after { 
-                    content: ""; width: 10px; height: 10px; 
-                    border-radius: 50%; position: absolute; 
-                }
+                .heart-icon { display: inline-block; width: 10px; height: 10px; transform: rotate(45deg); position: relative; }
+                .heart-icon:before, .heart-icon:after { content: ""; width: 10px; height: 10px; border-radius: 50%; position: absolute; }
                 .heart-icon:before { top: -5px; left: 0; }
                 .heart-icon:after { top: 0; left: -5px; }
                 .heart-count { font-weight: 800; font-size: 1.1rem; margin-right: 2px; color: #2c3e50; }
             `;
             document.head.appendChild(style);
         }
+
+        // Confetti Loop
+        this._animateConfetti = this._animateConfetti.bind(this);
+        requestAnimationFrame(this._animateConfetti);
+    }
+
+    _ensureElement(id) {
+        if (!document.getElementById(id)) {
+            const el = document.createElement('div');
+            el.id = id;
+            document.body.appendChild(el);
+        }
+    }
+
+    // --- COUNTDOWN ---
+    runCountdown(callback) {
+        this.countdownOverlay.innerHTML = '';
+        const sequence = ['3', '2', '1', 'GO!'];
+        let idx = 0;
+
+        const showNext = () => {
+            if (idx >= sequence.length) {
+                this.countdownOverlay.innerHTML = '';
+                if(callback) callback();
+                return;
+            }
+            this.countdownOverlay.innerHTML = `<div class="count-num anim">${sequence[idx]}</div>`;
+            
+            // Play Audio Beep (Using AudioContext from main if available would be better, but we assume global or simple prompt)
+            // For now, relies on visuals. Ideally AudioManager would trigger here.
+            
+            idx++;
+            setTimeout(showNext, 1000);
+        };
+        showNext();
+    }
+
+    // --- CONFETTI ---
+    fireConfetti() {
+        this.confettiCanvas.width = window.innerWidth;
+        this.confettiCanvas.height = window.innerHeight;
+        
+        for (let i = 0; i < 150; i++) {
+            this.confettiParticles.push({
+                x: window.innerWidth / 2,
+                y: window.innerHeight / 2,
+                vx: (Math.random() - 0.5) * 20,
+                vy: (Math.random() - 0.5) * 20 - 5,
+                color: `hsl(${Math.random() * 360}, 100%, 50%)`,
+                size: Math.random() * 10 + 5,
+                rotation: Math.random() * 360,
+                rspeed: (Math.random() - 0.5) * 10,
+                life: 1.0
+            });
+        }
+    }
+
+    _animateConfetti() {
+        const ctx = this.confettiCtx;
+        if (this.confettiParticles.length > 0) {
+            ctx.clearRect(0, 0, this.confettiCanvas.width, this.confettiCanvas.height);
+            for (let i = this.confettiParticles.length - 1; i >= 0; i--) {
+                let p = this.confettiParticles[i];
+                p.x += p.vx;
+                p.y += p.vy;
+                p.vy += 0.2; // Gravity
+                p.vx *= 0.99; // Air resistance
+                p.rotation += p.rspeed;
+                p.life -= 0.005;
+
+                ctx.save();
+                ctx.translate(p.x, p.y);
+                ctx.rotate(p.rotation * Math.PI / 180);
+                ctx.fillStyle = p.color;
+                ctx.globalAlpha = p.life;
+                ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size);
+                ctx.restore();
+
+                if (p.life <= 0 || p.y > window.innerHeight) {
+                    this.confettiParticles.splice(i, 1);
+                }
+            }
+        }
+        requestAnimationFrame(this._animateConfetti);
     }
 
     // --- TRANSITION SYSTEM ---
@@ -50,7 +131,7 @@ export default class UIManager {
         this.transitionCurtain.classList.add('active');
         setTimeout(() => {
             if (callback) callback();
-        }, 500); // Wait for fade in
+        }, 500);
     }
 
     hideTransition() {
@@ -66,8 +147,6 @@ export default class UIManager {
         `;
         
         this.tutorialOverlay.classList.add('visible');
-        
-        // Trigger bar animation slightly after render
         setTimeout(() => {
             const bar = this.tutorialOverlay.querySelector('.tutorial-bar');
             if(bar) bar.style.width = '100%';
@@ -91,34 +170,20 @@ export default class UIManager {
             if (p.isEliminated) badge.style.opacity = '0.5';
 
             let statusHTML = '';
-
             if (p.statusType === 'hearts') {
                 const lives = parseInt(p.customStatus) || 0;
                 if (lives > 0 && lives <= 3) {
                     statusHTML = `<div class="heart-container">`;
-                    for (let i = 0; i < lives; i++) {
-                        statusHTML += `<div class="heart-icon" style="background:${p.color}">
-                            <style>.heart-icon[style*="${p.color}"]:before, .heart-icon[style*="${p.color}"]:after { background: ${p.color}; }</style>
-                        </div>`;
-                    }
+                    for (let i = 0; i < lives; i++) statusHTML += `<div class="heart-icon" style="background:${p.color}"><style>.heart-icon[style*="${p.color}"]:before, .heart-icon[style*="${p.color}"]:after { background: ${p.color}; }</style></div>`;
                     statusHTML += `</div>`;
                 } else {
-                    statusHTML = `<div class="heart-container">
-                        <span class="heart-count">${lives}</span>
-                        <div class="heart-icon" style="background:${p.color}">
-                            <style>.heart-icon[style*="${p.color}"]:before, .heart-icon[style*="${p.color}"]:after { background: ${p.color}; }</style>
-                        </div>
-                    </div>`;
+                    statusHTML = `<div class="heart-container"><span class="heart-count">${lives}</span><div class="heart-icon" style="background:${p.color}"><style>.heart-icon[style*="${p.color}"]:before, .heart-icon[style*="${p.color}"]:after { background: ${p.color}; }</style></div></div>`;
                 }
             } else {
                 statusHTML = `<span class="p-score">${p.customStatus !== undefined ? p.customStatus : (p.score || 0)}</span>`;
             }
 
-            badge.innerHTML = `
-                <span class="p-dot" style="background:${p.color}"></span>
-                <span class="p-name">${p.name}</span>
-                ${statusHTML}
-            `;
+            badge.innerHTML = `<span class="p-dot" style="background:${p.color}"></span><span class="p-name">${p.name}</span>${statusHTML}`;
             this.scoreboard.appendChild(badge);
         });
     }
@@ -137,6 +202,7 @@ export default class UIManager {
 
     showPodium(players, buttonText, onButtonClick) {
         if (!this.centerMessage) return;
+        this.fireConfetti(); // CELEBRATE!
 
         const sorted = [...players].sort((a, b) => b.score - a.score);
         const maxScore = sorted[0].score;
@@ -150,15 +216,7 @@ export default class UIManager {
             const barClass = isWinner ? 'podium-bar winner' : 'podium-bar';
             const canvasId = `podium-av-${index}`;
 
-            podiumHTML += `
-                <div class="podium-column">
-                    <div class="podium-canvas-wrapper" id="${canvasId}"></div>
-                    <div class="${barClass}" style="height: ${heightPerc}px;">
-                        <span class="podium-rank">${p.score}</span>
-                    </div>
-                    <div class="podium-name">${p.name}</div>
-                </div>
-            `;
+            podiumHTML += `<div class="podium-column"><div class="podium-canvas-wrapper" id="${canvasId}"></div><div class="${barClass}" style="height: ${heightPerc}px;"><span class="podium-rank">${p.score}</span></div><div class="podium-name">${p.name}</div></div>`;
         });
         podiumHTML += '</div>';
 
@@ -176,7 +234,6 @@ export default class UIManager {
         this.centerMessage.classList.add('visible');
         this._bindButton('podium-btn', onButtonClick);
         
-        // NEW: Bind Exit Button
         const exitBtn = document.getElementById('podium-exit-btn');
         if(exitBtn) {
             exitBtn.addEventListener('click', () => {
@@ -190,25 +247,18 @@ export default class UIManager {
                 const canvasId = `podium-av-${index}`;
                 const isWinner = p.score === maxScore && maxScore > 0;
                 const isLast = (p.score === minScore) && !isWinner;
-
                 let anim = 'IDLE'; let exp = 'idle';
-
                 if (isWinner) { anim = 'WIN'; exp = 'happy'; }
                 else if (index === 1 && !isLast) { anim = 'IDLE'; exp = 'happy'; }
-                else if (isLast) {
-                    if (totalPlayers >= 4) { anim = 'DIZZY'; exp = 'stunned'; }
-                    else { anim = 'IDLE'; exp = 'sad'; }
-                }
+                else if (isLast) { if (totalPlayers >= 4) { anim = 'DIZZY'; exp = 'stunned'; } else { anim = 'IDLE'; exp = 'sad'; } }
                 else { anim = 'IDLE'; exp = 'sad'; }
-
                 if (maxScore === 0) { anim = 'IDLE'; exp = 'idle'; }
 
                 new p5((sketch) => {
                     const avatars = new AvatarSystem(sketch);
                     sketch.setup = () => { sketch.createCanvas(120, 140); sketch.loop(); };
                     sketch.draw = () => {
-                        sketch.clear(); sketch.push();
-                        sketch.translate(60, 90);
+                        sketch.clear(); sketch.push(); sketch.translate(60, 90);
                         avatars.applyTransform(anim);
                         avatars.draw({ x: 0, y: 0, size: 70, color: p.color, variant: p.variant, accessory: p.accessory, expression: exp });
                         sketch.pop();
@@ -225,13 +275,12 @@ export default class UIManager {
         const maxPoints = Math.max(1, sortedStats[0].points);
 
         let rowsHTML = '<div class="standings-table">';
-
         sortedStats.forEach((stat, idx) => {
             const p = players.find(pl => pl.id === stat.id);
             const isLeader = idx === 0;
             const canvasId = `stand-av-${idx}`;
-            const percent = (stat.points / maxPoints) * 100;
-
+            
+            // IMPORTANT: Start width at 0 so CSS transition triggers
             rowsHTML += `
                 <div class="standing-row ${isLeader ? 'leader' : ''}">
                     <span class="st-rank">#${idx + 1}</span>
@@ -239,7 +288,7 @@ export default class UIManager {
                     <div class="st-info">
                         <div class="st-name">${p.name}</div>
                         <div class="st-bar-bg">
-                            <div class="st-bar-fill" style="width:${percent}%; background:${p.color}"></div>
+                            <div class="st-bar-fill" id="bar-${idx}" style="width:0%; background:${p.color}"></div>
                         </div>
                     </div>
                     <span class="st-points">${stat.points}</span>
@@ -260,23 +309,28 @@ export default class UIManager {
         this.centerMessage.classList.add('visible');
         this._bindButton('tourney-next-btn', onNext);
 
+        // TRIGGER ANIMATIONS & AVATARS
         setTimeout(() => {
             sortedStats.forEach((stat, idx) => {
+                // 1. Animate Bar Width
+                const bar = document.getElementById(`bar-${idx}`);
+                const percent = (stat.points / maxPoints) * 100;
+                if(bar) bar.style.width = `${percent}%`;
+
+                // 2. Render Avatar
                 const p = players.find(pl => pl.id === stat.id);
                 const canvasId = `stand-av-${idx}`;
                 new p5((sketch) => {
                     const avatars = new AvatarSystem(sketch);
                     sketch.setup = () => { sketch.createCanvas(60, 60); sketch.noLoop(); setTimeout(() => sketch.loop(), 100); };
                     sketch.draw = () => {
-                        sketch.clear();
-                        sketch.push();
-                        sketch.translate(30, 30);
+                        sketch.clear(); sketch.push(); sketch.translate(30, 30);
                         avatars.draw({ x: 0, y: 0, size: 50, color: p.color, variant: p.variant, accessory: p.accessory, expression: idx === 0 ? 'happy' : 'idle' });
                         sketch.pop();
                     };
                 }, canvasId);
             });
-        }, 50);
+        }, 100);
     }
 
     showTurnMessage(text, color) {
@@ -297,7 +351,6 @@ export default class UIManager {
         if (!this.centerMessage) return;
         this.centerMessage.classList.remove('visible');
         this.centerMessage.innerHTML = '';
-
         if (this._boundKeyHandler) {
             window.removeEventListener('keydown', this._boundKeyHandler);
             this._boundKeyHandler = null;
@@ -312,9 +365,7 @@ export default class UIManager {
                 callback();
             });
         }
-
         if (this._boundKeyHandler) window.removeEventListener('keydown', this._boundKeyHandler);
-
         this._boundKeyHandler = (e) => {
             if (e.key === 'Enter') {
                 this.hideMessage();
