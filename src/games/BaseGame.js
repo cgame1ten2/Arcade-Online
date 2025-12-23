@@ -24,6 +24,7 @@ export default class BaseGame {
             turnBased: false,
             turnBasedBackgroundColor: false,
             controllerType: rules.controllerType || 'ONE_BUTTON', 
+            autoStart: true, // NEW: Defaults to true, but can be disabled
             ...rules
         };
 
@@ -39,7 +40,7 @@ export default class BaseGame {
             cursorX: this.V_WIDTH / 2,
             cursorY: this.V_HEIGHT / 2,
             isClicking: false,
-            clickSafetyTimer: 0, // NEW: Prevents stuck ripples
+            clickSafetyTimer: 0, 
             inputVector: { x: 0, y: 0 }
         }));
 
@@ -89,7 +90,11 @@ export default class BaseGame {
 
         this.onSetup(); 
         this.updateUI(); 
-        this.startNewRound();
+
+        // UPDATED LOGIC: Only start if autoStart is true
+        if (this.config.autoStart) {
+            this.startNewRound();
+        }
         
         if (this.mode !== 'demo') {
             window.dispatchEvent(new CustomEvent('game-state-change', { detail: 'PLAYING' }));
@@ -111,9 +116,7 @@ export default class BaseGame {
         }
         this.timerLastTick = now;
 
-        // --- UPDATE CURSORS & SAFETY CHECKS ---
         this.players.forEach(pl => {
-            // Physics
             if (this.config.controllerType === 'TOUCHPAD') {
                 if(pl.inputVector.x !== 0 || pl.inputVector.y !== 0) {
                     pl.cursorX += pl.inputVector.x * this.CURSOR_SPEED;
@@ -122,11 +125,9 @@ export default class BaseGame {
                     pl.cursorY = Math.max(0, Math.min(this.V_HEIGHT, pl.cursorY));
                 }
             }
-            
-            // Stuck Ripple Safety Valve
             if (pl.isClicking) {
                 pl.clickSafetyTimer += (p.deltaTime || 16);
-                if (pl.clickSafetyTimer > 2000) { // If held for > 2 seconds, force release
+                if (pl.clickSafetyTimer > 2000) { 
                     pl.isClicking = false;
                     pl.clickSafetyTimer = 0;
                 }
