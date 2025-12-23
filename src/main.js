@@ -63,32 +63,15 @@ function init() {
                 hostBtnRef.innerText = `Room: ${code}`;
                 hostBtnRef.style.background = '#2ecc71';
                 hostBtnRef.style.borderColor = '#27ae60';
-                hostBtnRef.onclick = null; 
+                hostBtnRef.disabled = false; // Re-enable so it can be clicked again
                 
-                const baseUrl = window.location.href.split('?')[0].split('#')[0].replace(/\/$/, "");
-                const joinUrl = `${baseUrl}/mobile.html?room=${code}`;
+                // Change onclick to just show QR modal
+                hostBtnRef.onclick = () => {
+                    audio.play('click');
+                    showQrModal(code);
+                };
                 
-                ui.showMessage(
-                    `Room Code: ${code}`, 
-                    `Scan to Join:<br><div id="host-qr-target" style="display:flex; justify-content:center; margin:15px auto; background:white; padding:10px; width:fit-content; border-radius:8px;"></div>`, 
-                    "OK", 
-                    () => ui.hideMessage()
-                );
-
-                setTimeout(() => {
-                    const target = document.getElementById('host-qr-target');
-                    if(target && window.QRCode) {
-                        target.innerHTML = ''; 
-                        new QRCode(target, {
-                            text: joinUrl,
-                            width: 128,
-                            height: 128,
-                            colorDark : "#2c3e50",
-                            colorLight : "#ffffff",
-                            correctLevel : QRCode.CorrectLevel.H
-                        });
-                    }
-                }, 100);
+                showQrModal(code);
             };
         };
         mainHeader.insertBefore(hostBtn, setupBtn);
@@ -162,6 +145,34 @@ function init() {
 
     renderHub(); 
     attachGlobalSoundListeners();
+}
+
+function showQrModal(code) {
+    const baseUrl = window.location.href.split('?')[0].split('#')[0].replace(/\/$/, "");
+    const joinUrl = `${baseUrl}/mobile.html?room=${code}`;
+    
+    ui.showMessage(
+        `Room Code: ${code}`, 
+        `Scan to Join:<br><div id="host-qr-target" style="display:flex; justify-content:center; margin:15px auto; background:white; padding:10px; width:fit-content; border-radius:8px;"></div>`, 
+        "OK", 
+        () => ui.hideMessage()
+    );
+
+    // Short timeout to let the DOM render the modal content
+    setTimeout(() => {
+        const target = document.getElementById('host-qr-target');
+        if(target && window.QRCode) {
+            target.innerHTML = ''; 
+            new QRCode(target, {
+                text: joinUrl,
+                width: 128,
+                height: 128,
+                colorDark : "#2c3e50",
+                colorLight : "#ffffff",
+                correctLevel : QRCode.CorrectLevel.H
+            });
+        }
+    }, 100);
 }
 
 function updateHostButton(code) {
@@ -324,7 +335,6 @@ function renderVisualLobby() {
 function bindLobbyInputs() {
     const accessories = AvatarSystem.ACCESSORIES;
 
-    // --- FIX: GET PLAYER BY INDEX THEN USE ID ---
     document.querySelectorAll('.name-input').forEach(el => {
         el.addEventListener('input', (e) => {
             if(e.target.disabled) return;
@@ -345,7 +355,6 @@ function bindLobbyInputs() {
         });
     });
 
-    // Buttons were already working, but for consistency:
     document.querySelectorAll('.var-btn').forEach(el => {
         el.addEventListener('click', (e) => {
             if(e.target.disabled) return;
