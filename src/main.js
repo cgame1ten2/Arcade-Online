@@ -26,6 +26,12 @@ let currentScreenType = 'CONTROLLER';
 let lobbyInstances = []; 
 let demoInstances = [];
 
+// --- ATTRACT MODE VARIABLES ---
+let lastInteractionTime = Date.now();
+const IDLE_TIMEOUT = 120000; // 2 Minutes
+let isAttractMode = false;
+let attractInterval = null;
+
 const hubGrid = document.getElementById('hub-grid');
 const gameStage = document.getElementById('game-stage');
 const backBtn = document.getElementById('back-to-hub-btn');
@@ -35,6 +41,7 @@ const savePlayersBtn = document.getElementById('save-players-btn');
 const addPlayerBtn = document.getElementById('add-player-btn');
 const playerConfigGrid = document.getElementById('player-config-grid');
 const mainHeader = document.getElementById('main-header');
+const attractLayer = document.getElementById('attract-layer');
 let hostBtnRef = null;
 
 function init() {
@@ -44,8 +51,18 @@ function init() {
         audio.init();
         audio.setTrack('lobby');
         document.removeEventListener('click', startAudio);
+        resetIdleTimer();
     };
     document.addEventListener('click', startAudio);
+
+    // Setup Idle Listeners
+    window.addEventListener('mousemove', resetIdleTimer);
+    window.addEventListener('keydown', resetIdleTimer);
+    window.addEventListener('touchstart', resetIdleTimer);
+    window.addEventListener('mousedown', resetIdleTimer);
+    
+    // Check for idle every second
+    setInterval(checkIdle, 1000);
 
     if (!document.getElementById('host-game-btn')) {
         const hostBtn = document.createElement('button');
@@ -71,6 +88,9 @@ function init() {
                 };
                 
                 showQrModal(code);
+                
+                // Also render QR into attract mode
+                renderAttractQR(code);
             };
         };
         mainHeader.insertBefore(hostBtn, setupBtn);
@@ -84,6 +104,7 @@ function init() {
         renderVisualLobby();
         setupOverlay.classList.remove('hidden');
         pauseDemos();
+        resetIdleTimer();
     };
 
     savePlayersBtn.onclick = () => {
@@ -92,12 +113,14 @@ function init() {
         setupOverlay.classList.add('hidden');
         cleanupLobby(); 
         renderHub();    
+        resetIdleTimer();
     };
 
     addPlayerBtn.onclick = () => {
         audio.play('click');
         players.addPlayer('local');
         renderVisualLobby();
+        resetIdleTimer();
     };
 
     backBtn.onclick = returnToHub;
@@ -109,13 +132,15 @@ function init() {
     window.addEventListener('player-update', () => {
         if(network.roomId && hostBtnRef) updateHostButton(network.roomId);
         if (!setupOverlay.classList.contains('hidden')) renderVisualLobby();
+        // New player joined? Wake up!
+        if (isAttractMode) stopAttractMode();
+        resetIdleTimer();
     });
 
     window.addEventListener('game-exit', () => {
         returnToHub();
     });
 
-    // NEW: Listen for game changes (from Tournament) to update screen type
     window.addEventListener('game-selected', (e) => {
         const gameId = e.detail;
         if (gameId === 'avatar-match') {
@@ -123,12 +148,13 @@ function init() {
         } else {
             currentScreenType = 'CONTROLLER';
         }
-        // Don't broadcast yet, BaseGame will trigger 'game-state-change' -> PLAYING shortly
-        // which broadcasts currentScreenType
     });
 
     window.addEventListener('remote-command', (e) => {
         const cmd = e.detail; 
+        resetIdleTimer();
+        if (isAttractMode) stopAttractMode(); // Remote command wakes up system
+
         if (cmd.action === 'EXIT') returnToHub();
         else if (cmd.action === 'NEXT_ROUND') {
             if (currentMode === 'game' && runner.activeGame) {
@@ -160,6 +186,75 @@ function init() {
     renderHub(); 
     attachGlobalSoundListeners();
 }
+
+// --- IDLE LOGIC ---
+function resetIdleTimer() {
+    lastInteractionTime = Date.now();
+    if (isAttractMode) {
+        stopAttractMode();
+    }
+}
+
+function checkIdle() {
+    if (isAttractMode || currentMode !== 'hub') return; // Only start from hub
+    if (Date.now() - lastInteractionTime > IDLE_TIMEOUT) {
+        startAttractMode();
+    }
+}
+
+function startAttractMode() {
+    console.log("💤 Starting Attract Mode");
+    isAttractMode = true;
+    attractLayer.classList.remove('hidden');
+    
+    // Pause Hub Demos
+    pauseDemos();
+
+    // Start Rotation
+    rotateAttractGame();
+    attractInterval = setInterval(rotateAttractGame, 15000); // Change game every 15s
+}
+
+function stopAttractMode() {
+    console.log("⚡ Waking Up");
+    isAttractMode = false;
+    attractLayer.classList.add('hidden');
+    
+    if (attractInterval) clearInterval(attractInterval);
+    
+    // Kill Attract Game
+    runner.mount(null, 'attract-canvas-container', 'demo');
+    
+    // Resume Hub
+    resumeDemos();
+}
+
+function rotateAttractGame() {
+    const randomGame = GAME_LIST[Math.floor(Math.random() * GAME_LIST.length)];
+    document.getElementById('attract-game-title').innerText = randomGame.title;
+    
+    // Mount in DEMO mode to the attract container
+    runner.mount(randomGame.class, 'attract-canvas-container', 'demo');
+}
+
+function renderAttractQR(code) {
+    const baseUrl = window.location.href.split('?')[0].split('#')[0].replace(/\/$/, "");
+    const joinUrl = `${baseUrl}/mobile.html?room=${code}`;
+    const target = document.getElementById('attract-qr-target');
+    if(target) {
+        target.innerHTML = '';
+        new QRCode(target, {
+            text: joinUrl,
+            width: 100,
+            height: 100,
+            colorDark : "#2c3e50",
+            colorLight : "#ffffff",
+            correctLevel : QRCode.CorrectLevel.L
+        });
+    }
+}
+
+// --- EXISTING FUNCTIONS ---
 
 function showQrModal(code) {
     const baseUrl = window.location.href.split('?')[0].split('#')[0].replace(/\/$/, "");
